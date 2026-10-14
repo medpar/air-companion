@@ -1,0 +1,10 @@
+--- a/xp/stack_builder/ports/nip/gg_nip_stack_builder.c
++++ b/xp/stack_builder/ports/nip/gg_nip_stack_builder.c
+@@ -39,5 +39,6 @@
+ void
+ GG_StackNetworkInterfaceElement_Destroy(GG_StackNetworkInterfaceElement* self)
+ {
+-    GG_COMPILER_UNUSED(self);
++    if (!self) return;
++    GG_ClearAndFreeObject(self, 0);
+ }

@@ -1,0 +1,16 @@
+.private/
+.build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.DS_Store
+*.ipa
+*.apk
+*.apkm
+*.pcap*
+*.pklg
+*.mobileprovision
+*.p12
+.env*
+__pycache__/
+*.pyc

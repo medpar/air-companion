@@ -1,0 +1,358 @@
+import Foundation
+import CoreBluetooth
+import Combine
+
+final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeripheralDelegate {
+    @Published var status = "Ready when you are"
+    @Published var detail = "Read the alarms already saved on your Air."
+    @Published var active = false
+    @Published var alarms: AlarmList?
+    @Published var keysReady = false
+    @Published var capabilities: BandCapabilities?
+    @Published var activity: ActivityReading?
+    @Published private(set) var activityUpdateID = 0
+    @Published var lastRead: Date?
+    @Published var haptic: HapticSetting?
+    @Published var notificationAccess = false
+    @Published private(set) var preview = false
+    private var realSnapshot: Snapshot?
+    private struct Snapshot: Codable { let alarms: AlarmList?; let activity: ActivityReading?; let lastRead: Date? }
+    private struct Journal: Codable { let date: Date; let before: AlarmList; let change: AlarmChange }
+    private enum Purpose { case refresh, change(AlarmChange), haptic(HapticSetting, UInt64) }
+    private enum Phase { case alarms, capabilities, activity, writing, verifying, haptic, hapticWriting, hapticVerifying }
+    private var purpose = Purpose.refresh
+    private var phase = Phase.alarms
+    private var beforeWrite: AlarmList?
+    private var writeSent = false
+    private var writeVerified = false
+    private var central: CBCentralManager!
+    private var band: CBPeripheral?
+    private var closing: CBPeripheral?
+    private var progressTimer: Timer?
+    private var tx: CBCharacteristic?
+    private var rx: CBCharacteristic?
+    private var transport: OpaquePointer?
+    private var pump: Timer?
+    private var timeout: Timer?
+    private var didRead = false
+    private var session = UUID()
+    private var hasStarted = false
+    private var sent = 0
+    private var received = 0
+    private var events: [[String: String]] = []
+    private let service = CBUUID(string: "FD62")
+    private let legacy = CBUUID(string: "ABBAFF00-E56A-484C-B832-8B17CF6CBFE8")
+    private let txID = CBUUID(string: "ABBAFF01-E56A-484C-B832-8B17CF6CBFE8")
+    private let rxID = CBUUID(string: "ABBAFF02-E56A-484C-B832-8B17CF6CBFE8")
+    override init() {
+        super.init(); refreshKeys()
+        if let data = try? Data(contentsOf: document("band-snapshot.json")),
+           let saved = try? JSONDecoder().decode(Snapshot.self, from: data) {
+            alarms = saved.alarms; activity = saved.activity; lastRead = saved.lastRead
+            status = "Saved on this iPhone"; detail = "Refresh to read the current band state."
+        }
+    }
+    func setPreview(_ enabled: Bool) {
+        guard !active, preview != enabled else { return }
+        if enabled {
+            realSnapshot = Snapshot(alarms: alarms, activity: activity, lastRead: lastRead)
+            preview = true
+            let draft = AlarmDraft(hour: 7, minute: 30, enabled: true, smartWake: true, days: 31)
+            let config = try! draft.configuration()
+            let weekend = try! AlarmDraft(hour: 9, minute: 0, enabled: false, smartWake: false, days: 96).configuration()
+            alarms = try? AlarmList(data: Proto.message(1, Proto.integer(1, 8) + Proto.integer(2, 1)) + Proto.message(2, Proto.integer(1, 1) + Proto.message(2, config)) + Proto.message(2, Proto.integer(1, 2) + Proto.message(2, weekend)))
+            activity = try? ActivityReading(data: Proto.integer(2, 8246) + Proto.integer(7, 68) + Proto.integer(8, 3))
+            lastRead = Date(); status = "Preview mode"; detail = "Example data. Bluetooth is never opened."
+        } else {
+            preview = false; alarms = realSnapshot?.alarms; activity = realSnapshot?.activity; lastRead = realSnapshot?.lastRead
+            realSnapshot = nil; status = "Ready when you are"; detail = "Refresh when your Air is available."
+        }
+    }
+    private func cache() {
+        guard !preview else { return }
+        do { try JSONEncoder().encode(Snapshot(alarms: alarms, activity: activity, lastRead: lastRead)).write(to: document("band-snapshot.json"), options: [.atomic, .completeFileProtection]) }
+        catch { record("cache_failed") }
+    }
+    func refreshKeys() { keysReady = (try? DeviceKeys.load()) != nil }
+    func start() { begin(.refresh) }
+    func save(_ original: BandAlarm, hour: Int, minute: Int, enabled: Bool, smartWake: Bool, days: UInt8? = nil) {
+        guard let configuration = try? original.edited(hour: hour, minute: minute, enabled: enabled, smartWake: smartWake, days: days) else { return }
+        begin(.change(.edit(original, configuration)))
+    }
+    func create(_ draft: AlarmDraft) {
+        guard let configuration = try? draft.configuration() else { return }
+        begin(.change(.create(configuration)))
+    }
+    func setIntensity(_ intensity: UInt64) {
+        guard let haptic, capabilities?.hapticIntensities.contains(intensity) == true else { return }
+        begin(.haptic(haptic, intensity))
+    }
+    func delete(_ alarm: BandAlarm) { begin(.change(.delete(alarm))) }
+    private func simulate(_ requested: Purpose) {
+        if case let .change(change) = requested, let before = alarms {
+            guard change.validate(before: before) else { status = "Alarm changed or list full"; return }
+            var entries = before.alarms
+            switch change {
+            case .edit(let original, let config):
+                entries.removeAll { $0.id == original.id }; entries.append(decodeExample(id: original.id, config: config))
+            case .create(let config): entries.append(decodeExample(id: (entries.map(\.id).max() ?? 0) + 1, config: config))
+            case .delete(let original): entries.removeAll { $0.id == original.id }
+            }
+            alarms = AlarmList(maximum: before.maximum, smartWakeSupported: before.smartWakeSupported, alarms: entries.sorted { $0.id < $1.id })
+            status = "Preview updated"
+        } else { status = "Preview refreshed" }
+        lastRead = Date(); detail = "Example data only. Nothing was sent to a band."
+    }
+    private func decodeExample(id: UInt64, config: Data) -> BandAlarm {
+        try! AlarmList(data: Proto.message(1, Proto.integer(1, 8) + Proto.integer(2, 1)) + Proto.message(2, Proto.integer(1, id) + Proto.message(2, config))).alarms[0]
+    }
+    private func begin(_ requested: Purpose) {
+        guard !active else { return }
+        if preview { simulate(requested); return }
+        guard closing == nil else { status = "Finishing disconnection"; detail = "Try again in a moment."; return }
+        refreshKeys()
+        guard keysReady else { status = "Device key needed"; detail = "Import the protected key file from this Mac first."; return }
+        session = UUID()
+        purpose = requested; phase = .alarms; beforeWrite = nil; writeSent = false; writeVerified = false
+        active = true; didRead = false; hasStarted = false; sent = 0; received = 0; events = []
+        status = "Finding your Air"; detail = "Keep your band close to your iPhone."
+        record("begin")
+        timeout = Timer(timeInterval: 35, repeats: false) { [weak self] _ in self?.finish("Connection timed out", "Your band is disconnected from this app. Open Google Health to check its connection.") }
+        if let timeout { RunLoop.main.add(timeout, forMode: .common) }
+        progressTimer = Timer(timeInterval: 5, repeats: true) { [weak self] _ in self?.record("progress") }
+        if let progressTimer { RunLoop.main.add(progressTimer, forMode: .common) }
+        if central == nil { central = CBCentralManager(delegate: self, queue: .main) }
+        else { centralManagerDidUpdateState(central) }
+    }
+    func stop() { if active { finish("Disconnected", "Your alarms are unchanged.") } }
+    func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        guard active else { return }
+        guard central.state == .poweredOn else {
+            if central.state == .unauthorized { finish("Bluetooth access needed", "Allow Bluetooth access in iPhone Settings.") }
+            else if central.state == .poweredOff { finish("Bluetooth is off", "Switch it on in iPhone Settings, then try again.") }
+            return
+        }
+        let known = central.retrieveConnectedPeripherals(withServices: [service, legacy])
+        if known.count == 1 { connect(known[0]) }
+        else if known.count > 1 { finish("More than one band found", "Move other Fitbit devices away before trying again.") }
+        else { central.scanForPeripherals(withServices: [service, legacy], options: [CBCentralManagerScanOptionAllowDuplicatesKey: false]) }
+    }
+    private func connect(_ peripheral: CBPeripheral) {
+        guard active, band == nil else { return }
+        central.stopScan(); band = peripheral; peripheral.delegate = self
+        status = "Connecting"; record("connecting")
+        central.connect(peripheral, options: nil)
+    }
+    func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String: Any], rssi RSSI: NSNumber) {
+        guard let name = (advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? peripheral.name,
+              name.localizedCaseInsensitiveContains("air") else { return }
+        connect(peripheral)
+    }
+    func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        guard active, band === peripheral else { central.cancelPeripheralConnection(peripheral); return }
+        notificationAccess = peripheral.ancsAuthorized
+        record("connected"); record("ancs_authorized", value: String(notificationAccess))
+        peripheral.discoverServices([service, legacy])
+    }
+    func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        if closing === peripheral { closing = nil; return }
+        if band === peripheral { finish("Couldn’t connect", "Open Google Health to check your band, then try again.") }
+    }
+    func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+        if closing === peripheral { closing = nil; return }
+        if active, band === peripheral { finish("Connection ended", "Your band is disconnected from this app.") }
+    }
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        guard active, band === peripheral else { return }
+        guard error == nil, let services = peripheral.services, !services.isEmpty else { finish("Band service unavailable", "No settings were changed."); return }
+        for service in services { peripheral.discoverCharacteristics([txID, rxID], for: service) }
+    }
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+        guard active, band === peripheral else { return }
+        guard error == nil else { finish("Band service unavailable", "No settings were changed."); return }
+        for characteristic in service.characteristics ?? [] {
+            if characteristic.uuid == txID { tx = characteristic }
+            if characteristic.uuid == rxID { rx = characteristic }
+        }
+        guard !hasStarted, let tx, let rx else { return }
+        guard tx.properties.contains(.writeWithoutResponse), rx.properties.contains(.notify) else { finish("Unsupported band transport", "No settings were changed."); return }
+        hasStarted = true
+        peripheral.setNotifyValue(true, for: rx)
+    }
+    func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
+        guard active, band === peripheral, characteristic === rx, transport == nil else { return }
+        guard error == nil, characteristic.isNotifying else { finish("Couldn’t receive from band", "No settings were changed."); return }
+        do {
+            let keys = try DeviceKeys.load().ordered
+            let ids = keys.map(\.keyId), bytes = keys.flatMap { [UInt8](Data(base64Encoded: $0.key)!) }
+            let mtu = UInt16(min(512, peripheral.maximumWriteValueLength(for: .withoutResponse)))
+            transport = ids.withUnsafeBufferPointer { ids in bytes.withUnsafeBufferPointer { bytes in
+                air_transport_create(mtu, ids.baseAddress, bytes.baseAddress, { context, bytes, count in
+                    guard let context, let bytes else { return -1 }
+                    let owner = Unmanaged<BandConnection>.fromOpaque(context).takeUnretainedValue()
+                    guard let band = owner.band, let tx = owner.tx, owner.active else { return -1 }
+                    guard band.canSendWriteWithoutResponse else { return 1 }
+                    owner.sent += 1
+                    band.writeValue(Data(bytes: bytes, count: count), for: tx, type: .withoutResponse)
+                    return 0
+                }, { context, code, bytes, count in
+                    guard let context else { return }
+                    let owner = Unmanaged<BandConnection>.fromOpaque(context).takeUnretainedValue()
+                    let body = bytes.map { Data(bytes: $0, count: count) } ?? Data()
+                    let session = owner.session
+                    DispatchQueue.main.async {
+                        guard owner.session == session else { return }
+                        owner.handleResponse(code: code, body: body)
+                    }
+                }, Unmanaged.passUnretained(self).toOpaque())
+            } }
+            guard let transport else { finish("Couldn’t start secure connection", "No settings were changed."); return }
+            status = "Securing the connection"; record("handshake")
+            guard air_transport_start(transport) == 0 else { finish("Couldn’t start secure connection", "No settings were changed."); return }
+            work()
+        } catch { finish("Device key unavailable", "Unlock your iPhone and try again.") }
+    }
+    func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+        guard active, band === peripheral, characteristic === rx, let transport, let data = characteristic.value else { return }
+        guard error == nil else { finish("Receive failed", "No settings were changed."); return }
+        received += 1
+        let result = data.withUnsafeBytes { air_transport_receive(transport, $0.bindMemory(to: UInt8.self).baseAddress, data.count) }
+        guard result == 0 else { record("receive_error", value: String(result)); finish("Band transport stopped", "No settings were changed."); return }
+        work()
+    }
+    func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
+        guard active, band === peripheral, let transport else { return }
+        air_transport_writable(transport); work()
+    }
+    private func work() {
+        guard active, let transport else { return }
+        pump?.invalidate(); pump = nil
+        var delay = UInt32.max
+        guard air_transport_work(transport, &delay) == 0 else { finish("Band transport stopped", "No settings were changed."); return }
+        let state = air_transport_state(transport)
+        if state == 2 && !didRead {
+            didRead = true; status = "Reading alarms"; record("authenticated")
+            let result = air_transport_read_alarms(transport)
+            guard result == 0 else { record("read_error", value: String(result)); finish("Couldn’t read alarms", "No settings were changed."); return }
+            // A new request schedules a timer after the previous work() result.
+            delay = 0
+        } else if state == 3 || state < 0 { finish("Secure connection failed", "No settings were changed."); return }
+        if delay != UInt32.max {
+            pump = Timer(timeInterval: max(0.001, Double(delay) / 1000), repeats: false) { [weak self] _ in self?.work() }
+            if let pump { RunLoop.main.add(pump, forMode: .common) }
+        }
+    }
+    private func handleResponse(code: Int32, body: Data) {
+        guard active else { return }
+        switch phase {
+        case .alarms:
+            guard code == 69, let result = try? AlarmList(data: body) else { record("alarm_response_rejected", value: String(code)); finish("Couldn’t read alarms", "Try refreshing again with Google Health closed."); return }
+            alarms = result; lastRead = Date(); record("alarms_read", value: String(result.alarms.count))
+            cache()
+            if case let .change(change) = purpose {
+                guard change.validate(before: result) else {
+                    finish("Alarm changed or list full", "The latest list is loaded. Review it before saving."); return
+                }
+                guard let transport else { return }
+                do {
+                    try JSONEncoder().encode(Journal(date: Date(), before: result, change: change)).write(to: document("alarm-transaction.json"), options: [.atomic, .completeFileProtection])
+                } catch { finish("Couldn’t preserve original alarms", "Nothing was changed. Check available iPhone storage."); return }
+                beforeWrite = result; phase = .writing; status = "Saving alarms"
+                let outcome: Int32
+                switch change {
+                case .edit(let original, let config):
+                    outcome = config.withUnsafeBytes { air_transport_update_alarm(transport, UInt32(original.id), $0.bindMemory(to: UInt8.self).baseAddress, config.count) }
+                case .create(let config):
+                    outcome = config.withUnsafeBytes { air_transport_create_alarm(transport, $0.bindMemory(to: UInt8.self).baseAddress, config.count) }
+                case .delete(let original): outcome = air_transport_delete_alarm(transport, UInt32(original.id))
+                }
+                guard outcome == 0 else { finish("Couldn’t send change", "Nothing was changed."); return }
+                writeSent = true; record("alarm_change_sent"); work()
+            } else { read(1, phase: .capabilities, title: "Checking band features") }
+        case .capabilities:
+            capabilities = code == 69 ? try? BandCapabilities(data: body) : nil
+            if capabilities?.settings.contains(1) != true { haptic = nil }
+            record("capabilities_response", value: String(code))
+            if capabilities?.settings.contains(1) == true {
+                read(3, phase: .haptic, title: "Reading vibration setting")
+            } else if case .haptic = purpose {
+                finish("Vibration control unavailable", "Your band did not advertise this setting. Nothing was changed.")
+            } else { read(2, phase: .activity, title: "Reading activity") }
+        case .haptic:
+            haptic = code == 69 ? try? HapticSetting(data: body) : nil
+            if case let .haptic(original, value) = purpose {
+                guard let fresh = haptic, fresh.configuration == original.configuration,
+                      capabilities?.hapticIntensities.contains(value) == true,
+                      let configuration = try? fresh.response(changingTo: value), let transport else {
+                    finish("Vibration setting changed or unavailable", "Refresh and review the current setting before saving."); return
+                }
+                do { try JSONEncoder().encode(fresh).write(to: document("haptic-before-edit.json"), options: [.atomic, .completeFileProtection]) }
+                catch { finish("Couldn’t preserve original setting", "Nothing was changed."); return }
+                phase = .hapticWriting; status = "Saving vibration setting"
+                let outcome = configuration.withUnsafeBytes { air_transport_set_haptics(transport, $0.bindMemory(to: UInt8.self).baseAddress, configuration.count) }
+                guard outcome == 0 else { finish("Couldn’t send setting", "Nothing was changed."); return }
+                writeSent = true; record("haptic_change_sent"); work()
+            } else { read(2, phase: .activity, title: "Reading activity") }
+        case .hapticWriting:
+            record("haptic_change_response", value: String(code))
+            read(3, phase: .hapticVerifying, title: "Checking vibration setting")
+        case .hapticVerifying:
+            guard code == 69, let fresh = try? HapticSetting(data: body), case let .haptic(original, value) = purpose,
+                  let expectedData = try? original.response(changingTo: value), let expected = try? HapticSetting(data: expectedData),
+                  let actualFields = try? Proto(fresh.configuration).fields, let expectedFields = try? Proto(expected.configuration).fields,
+                  actualFields == expectedFields else {
+                finish("Save needs checking", "Refresh to check the band’s current setting."); return
+            }
+            haptic = fresh; writeVerified = true; record("haptic_change_verified")
+            finish("Vibration setting saved", "Read back from your band. This changes intensity, not event patterns.")
+        case .activity:
+            let reading = code == 69 ? try? ActivityReading(data: body) : nil
+            if let reading { activity = reading; cache(); activityUpdateID += 1 }
+            record("activity_response", value: String(code))
+            finish(reading == nil ? "Alarms refreshed" : "Up to date", reading == nil ? "Activity wasn’t available. Any previous reading retains its timestamp." : "Connection closed. Your band keeps tracking.")
+        case .writing:
+            record("alarm_edit_response", value: String(code))
+            // Even a missing acknowledgement can follow an applied PUT. Read the
+            // actual state; never blindly retry a mutation or claim it failed.
+            read(0, phase: .verifying, title: "Checking saved alarm")
+        case .verifying:
+            guard code == 69, let result = try? AlarmList(data: body),
+                  case let .change(change) = purpose, let beforeWrite else {
+                finish("Save needs checking", "Refresh your alarms to see the band’s current state."); return
+            }
+            alarms = result; lastRead = Date(); cache()
+            guard change.verified(before: beforeWrite, after: result) else {
+                finish("Save needs checking", "The band returned a different alarm list. Review it before making another change."); return
+            }
+            writeVerified = true; record("alarm_edit_verified")
+            finish("Alarms saved", "Read back from your band. Unrelated alarms are unchanged.")
+        }
+    }
+    private func read(_ resource: UInt32, phase: Phase, title: String) {
+        guard active, let transport else { return }
+        self.phase = phase; status = title
+        guard air_transport_read(transport, resource) == 0 else { finish("Connection ended", "Refresh to see the latest band state."); return }
+        work()
+    }
+    private func document(_ name: String) -> URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(name)
+    }
+    private func finish(_ title: String, _ subtitle: String) {
+        active = false; progressTimer?.invalidate(); progressTimer = nil; pump?.invalidate(); pump = nil; timeout?.invalidate(); timeout = nil
+        central?.stopScan()
+        if let transport { air_transport_destroy(transport); self.transport = nil }
+        if let band, band.state != .disconnected { closing = band; central?.cancelPeripheralConnection(band) }
+        band = nil; tx = nil; rx = nil
+        status = writeSent && !writeVerified ? "Save needs checking" : title
+        detail = writeSent && !writeVerified ? "The request may have reached your band. Refresh before retrying; your prior settings are backed up on this iPhone." : subtitle
+        record("ended", value: status)
+    }
+    private func record(_ event: String, value: String = "") {
+        events.append(["event": event, "value": value, "time": ISO8601DateFormatter().string(from: Date())])
+        let report: [String: Any] = ["events": events, "sentFragments": sent, "receivedFragments": received]
+        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("connection-report.json")
+        if let data = try? JSONSerialization.data(withJSONObject: report, options: .prettyPrinted) {
+            try? data.write(to: url, options: [.atomic, .completeFileProtection])
+        }
+    }
+}
