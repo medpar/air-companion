@@ -9,15 +9,16 @@ Google Health.** No firmware changes, unpairing or device resets.
 
 | Feature | App implementation | Device evidence |
 | --- | --- | --- |
-| Read alarms | Authenticated read, cache, diagnostics | One successful real Air read; original companion remained normal |
-| Add, edit, repeat, delete alarms | Fresh-state conflict check, protected transaction backup, one mutation, read-back verification | Synthetic encrypted peers and parser tests; physical writes pending |
-| Band vibration intensity | Reads capabilities and current value; exposes only advertised options; preserves unknown fields and verifies changes | Protocol recovered statically; actual Air support and writes pending |
-| Steps and current heart rate | Explicit refresh, timestamped snapshots, confidence filter, daily history | Routes/schema identified; physical app readings pending |
+| Read alarms | Authenticated read, cache, diagnostics, ordered BLE send queue | Repeated physical reads after fixing the observed backpressure failure |
+| Add, edit, repeat, delete alarms | Fresh-state conflict check, protected backup, read-back verification; corrects the Air's initially enabled creation | Physical create/edit/recurrence/disable/delete verified; original two alarms restored |
+| Band vibration intensity | Advertised options only; preserves unknown fields and verifies changes | Air advertised Off/Low/High; Low → High → Low verified |
+| Steps and current heart rate | Explicit refresh, timestamped snapshots, confidence filter, daily history | Physical reads succeeded |
 | Apple Health trends | Read-only import, per-device/source selection, daily sleep/RHR/SDNN values, 7-day vs 28-day comparison | Builds; aggregation logic tested; real import permission/data pending |
 | Workouts | Session timer with relaunch recovery, manual logs, Health imports, effort ratings, session-RPE load | Offline logic and persistence tested |
-| Daily step notification | Once per rule per local day, on iPhone, after a current-day refresh | Rule engine tested; notification delivery needs device acceptance |
-| Calls/app notifications on band | Saved automation drafts | No verified notification route for this Air |
-| Custom band vibration/LED events | Saved desired-action drafts; no guessed commands | Event transport and supported lights/patterns unresolved |
+| Daily step notification | iPhone alert or band vibration after a refresh; once per rule/day | Band delivery verified using an isolated test library; iPhone banner permission/delivery pending |
+| Incoming calls on band | CallKit observer while app is foreground; refresh first | Builds; real incoming-call test pending; no locked/background delivery |
+| Vibration patterns | One to three intensity-feedback groups, restore after each, durable recovery journal | Owner felt short vibration; one/two-group exchanges verified |
+| Other apps' notifications / LED events | Saved drafts; no guessed commands | No supported iOS forwarding/LED route established |
 | Double-tap → phone action | Saved gesture/shortcut drafts | No verified exported gesture event |
 
 Preview mode uses clearly labelled examples, stays in memory, and never opens
@@ -101,26 +102,36 @@ See the app's **Methods & privacy** page and [methods](docs/METHODS.md).
 
 ## Preservation and privacy
 
-Connections begin only through explicit controls and end on completion, failure,
-backgrounding or timeout. One native transport and one CoAP request run at a time.
+Connections begin through explicit controls, enabled rules or USB diagnostic
+launch arguments. They end on completion, failure, backgrounding or timeout;
+a temporary vibration setting gets a bounded background restoration window.
+One native transport and one CoAP request run at a time.
 No automatic application mutation retries. Before a write the app reads fresh
 state and saves the original; it checks the actual band state afterwards. An
 uncertain response is reported as “Save needs checking,” never silently retried
-or rolled back.
+or blindly retried. A disabled new alarm may initially be enabled by the Air:
+after identifying the newly created alarm, the app applies the requested off
+state and verifies it. It never repeats the creation request.
 
 There are no firmware, reset, provisioning, bond-management, arbitrary-command,
 fuzzing or bulk-sync deletion APIs. Known normal alarm operations and a gated
-haptic-intensity operation are the only settings mutations. Live step alerts are
+haptic-intensity operation are the only settings mutations. Vibration groups
+temporarily change that intensity; interruption preserves a recovery journal.
+The next connection reads first, restores only the known temporary state, and
+does not overwrite a conflicting change. Live step alerts are
 foreground refresh-driven; there is no continuous background band monitoring.
 
 Keys use device-only Keychain. Health data, backups and diagnostics use protected
 local files. Apple device-backup settings may include non-Keychain app files.
-Diagnostics exclude payloads, keys and health/alarm values. No analytics or cloud
+Normal diagnostics exclude payloads, keys and health/alarm values. Explicit USB
+diagnostic mode additionally stores up to 512 encrypted GATT fragments in a
+protected local file; those captures may include device identifiers and stay
+private. No analytics or cloud
 backend. Raw captures, IDs, keys, proprietary app files and research tools stay
 in ignored `.private/` storage and are excluded from this repository.
 
 [Research record](docs/RESEARCH.md) · [Protocol boundary](docs/PROTOCOL.md) ·
-[Dependency notices](Native/THIRD_PARTY.md) · [Later device acceptance](docs/DEVICE-ACCEPTANCE.md)
+[Dependency notices](Native/THIRD_PARTY.md) · [Device acceptance](docs/DEVICE-ACCEPTANCE.md)
 
 ## Simulator preview
 

@@ -12,7 +12,7 @@ set(license_files
 set_source_files_properties(Assets.xcassets PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
 set_source_files_properties(${license_files} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
 target_sources(AirCompanion PRIVATE ${license_files})
-target_link_libraries(AirCompanion PRIVATE air-transport "-framework CoreBluetooth" "-framework SwiftUI" "-framework Security" "-framework HealthKit" "-framework UserNotifications" "-framework Charts")
+target_link_libraries(AirCompanion PRIVATE air-transport "-framework CoreBluetooth" "-framework SwiftUI" "-framework Security" "-framework HealthKit" "-framework UserNotifications" "-framework Charts" "-framework CallKit")
 set_target_properties(AirCompanion PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist"
     XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon"

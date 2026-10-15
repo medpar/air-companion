@@ -20,8 +20,8 @@ records. A custom read later succeeded on the real band.
 | `/liveactivity` | GET | Read current activity snapshot |
 
 Alarm/configuration/route definitions were recovered from static app analysis;
-live repeated GET responses validate the alarm decoder. Write routes are tested
-against synthetic peers, **not yet the physical Air**. Settings PUT-query and
+live repeated GET responses validate the alarm decoder. Alarm write routes and
+haptic setting changes were verified on the physical Air on 2026-10-15. Settings PUT-query and
 POST-mutation semantics were checked in the original bytecode fallback as well
 as the generated schema. No proprietary source is included here.
 
@@ -32,19 +32,37 @@ still need device acceptance. Read-back compares decoded fields conservatively;
 a band that canonicalizes omitted defaults differently can produce “needs
 checking” even when an edit applied. That is safer than claiming success.
 
+This Air creates an alarm enabled even when POST explicitly encodes disabled,
+and returned 5.00 despite applying creation. Read-back identifies exactly one
+new alarm and checks every other field and existing alarm. Only that observed
+activation mismatch allows one PUT to apply the requested off state, followed
+by another verification. POST is never repeated automatically. Creation may
+briefly enable the new alarm; an interrupted save must be checked.
+
 Haptic controls require a fresh capability response advertising setting 1 and
 the requested intensity, a successful current-setting query, an unchanged prior
 value, protected backup and verified read-back. Only the haptic submessage is
 sent; unknown fields inside it are preserved. This is intensity configuration,
-not an arbitrary “vibrate now” command or per-event pattern control.
+not an arbitrary motor waveform command. Changing Low/High produces feedback:
+the owner confirmed vibration. A group changes to the alternate active value,
+waits 800 ms, reads, restores only the known temporary state, and reads again.
+One to three groups are supported, with 800 ms between groups. A protected
+journal survives interruption; later connections recover before other work.
+Off is never overridden, and an unexpected configuration is never overwritten.
+
+The [Android notification bridge](https://github.com/paceaitian/fitbit-air-notification-bridge/tree/6fec57fafc68e03904f49d823248e38b07a54478)
+provided the intensity-feedback lead. Its Android notification permissions and
+BOOTSTRAP authentication are not used here; this app keeps the owner's recovered
+mobile-data keys and iOS-supported interfaces.
 
 ## Remaining interoperability questions
 
-- A later refresh stalled during the handshake. No usable ATT trace was captured
-  for that attempt. Its root cause remains unknown. The current app prevents a
-  new session while its previous Bluetooth disconnect is pending, pumps timers
-  in common run-loop modes, and records bounded progress. These are robustness
-  improvements, not proof that the physical failure is resolved.
+- The 2026-10-15 trace authenticated successfully but reordered outgoing
+  Gattlink sequence 3 ahead of 2 after a sink backpressure return. The Swift
+  bridge now accepts into a bounded 64-packet FIFO and drains in order whenever
+  CoreBluetooth permits writes. The next physical refresh completed with no
+  sequence discontinuities. Earlier uncaptured failures cannot be diagnosed
+  retrospectively from this finding.
 - ANCS authorization can be inspected, but false does not prove unsupported band
   firmware. ANCS is consumed by an accessory, not by a normal iPhone app.
 - Apple's newer accessory-notification route requires system support, extensions
@@ -54,6 +72,11 @@ not an arbitrary “vibrate now” command or per-event pattern control.
   capability/transport has been verified. They are not guessed CoAP writes.
 - No exported double-tap event or arbitrary LED color command is established.
   Documented white/red status lights do not establish app-controlled RGB.
+- [CXCallObserver](https://developer.apple.com/documentation/callkit/cxcallobserver)
+  supplies incoming-call state while the app runs. The implementation deliberately
+  requires foreground execution, skips answered/ended/outgoing calls, and stores
+  event IDs to avoid duplicate vibrations. It does not provide a background wake
+  mechanism or access to other apps' notification content.
 
 [ANCS specification](https://developer.apple.com/library/archive/documentation/CoreBluetooth/Reference/AppleNotificationCenterServiceSpecification/Specification/Specification.html)
 · [New accessory notification transport](https://developer.apple.com/documentation/AccessoryTransportExtension/receiving-ios-notifications-on-an-accessory)

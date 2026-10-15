@@ -1,6 +1,8 @@
 # Research evidence and acceptance plan
 
-Updated 2026-10-13. Research stage; no device feature is claimed implemented.
+Chronological research log; older entries describe the evidence available then.
+For the current implementation and physical results, see the
+[2026-10-15 acceptance record](DEVICE-ACCEPTANCE.md) and [README](../README.md).
 
 ## Evidence levels
 

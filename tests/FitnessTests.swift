@@ -38,8 +38,15 @@ import Foundation
         precondition(!AutomationEngine.eligible(rule, steps: 15000, goal: 9000, readingDate: now, now: now, receipts: [receipt], calendar: calendar))
         let recovered = try JSONDecoder().decode([RuleReceipt].self, from: JSONEncoder().encode([receipt]))
         precondition(!AutomationEngine.eligible(rule, steps: 15000, goal: 10000, readingDate: now, now: now, receipts: recovered, calendar: calendar))
-        var draft = rule; draft.action = .bandVibration
-        precondition(!draft.canRun && !AutomationEngine.eligible(draft, steps: 20000, goal: 10000, readingDate: now, now: now, receipts: [], calendar: calendar))
+        var vibration = rule; vibration.action = .bandVibration
+        precondition(vibration.canRun && vibration.vibrationGroups == 1)
+        precondition(AutomationEngine.eligible(vibration, steps: 20000, goal: 10000, readingDate: now, now: now, receipts: [], calendar: calendar))
+        vibration.trigger = .incomingCall
+        precondition(vibration.canRun && !AutomationEngine.eligible(vibration, steps: 20000, goal: 10000, readingDate: now, now: now, receipts: [], calendar: calendar))
+        vibration.pattern = "One long pulse"; precondition(!vibration.canRun)
+        vibration.pattern = "Three groups"; precondition(vibration.vibrationGroups == 3)
+        vibration.trigger = .notification; precondition(!vibration.canRun)
+        vibration.trigger = .doubleTap; precondition(!vibration.canRun)
         print("PASS: DST windows, missing data, overlap union, session-RPE load, milestone deduplication and capability gates")
     }
 }

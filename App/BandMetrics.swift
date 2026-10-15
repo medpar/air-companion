@@ -52,4 +52,28 @@ struct HapticSetting: Codable {
         return Proto.message(1, Proto.message(1, updated))
     }
     static func name(_ value: UInt64) -> String { [1: "Off", 2: "Low", 3: "High"][value] ?? "Unknown" }
+    func matches(_ other: HapticSetting) -> Bool {
+        guard let first = try? Proto(configuration).fields, let second = try? Proto(other.configuration).fields else { return false }
+        return first == second
+    }
+}
+
+/// A short feedback group uses the band's normal intensity preview. It is not
+/// an arbitrary motor waveform. Persist this before the first setting write.
+struct HapticPulseTransaction: Codable {
+    let original: HapticSetting
+    let alternate: HapticSetting
+    let createdAt: Date
+    enum Recovery: Equatable { case alreadyRestored, restore, conflict }
+    init(original: HapticSetting, supported: Set<UInt64>) throws {
+        guard [2, 3].contains(original.intensity), supported.isSuperset(of: [2, 3]) else { throw Proto.Failure.invalid }
+        self.original = original
+        alternate = try HapticSetting(data: original.response(changingTo: original.intensity == 2 ? 3 : 2))
+        createdAt = Date()
+    }
+    func recovery(for current: HapticSetting) -> Recovery {
+        if current.matches(original) { return .alreadyRestored }
+        if current.matches(alternate) { return .restore }
+        return .conflict // Another app/user may have changed it; never overwrite.
+    }
 }

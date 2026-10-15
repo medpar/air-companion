@@ -88,18 +88,27 @@ enum RuleAction: String, Codable, CaseIterable, Identifiable {
     case phoneAlert, bandVibration, bandLight, shortcut
     var id: String { rawValue }
     var title: String { switch self { case .phoneAlert: return "iPhone notification"; case .bandVibration: return "Band vibration"; case .bandLight: return "Band light"; case .shortcut: return "Run a shortcut" } }
-    var available: Bool { self == .phoneAlert }
+    var available: Bool { self == .phoneAlert || self == .bandVibration }
 }
 struct AutomationRule: Codable, Identifiable {
     var id = UUID()
     var trigger = RuleTrigger.stepGoal
     var action = RuleAction.phoneAlert
     var enabled = true
-    var pattern = "Two short pulses"
+    var pattern = "Short vibration"
     var light = "White"
     var shortcut = ""
     var title: String { "\(trigger.title) → \(action.title)" }
-    var canRun: Bool { trigger == .stepGoal && action.available }
+    var vibrationGroups: Int? { ["Short vibration": 1, "Two groups": 2, "Three groups": 3][pattern] }
+    var canRun: Bool {
+        (trigger == .stepGoal && action == .phoneAlert) ||
+        ((trigger == .stepGoal || trigger == .incomingCall) && action == .bandVibration && vibrationGroups != nil)
+    }
+    var executionNote: String {
+        guard canRun else { return "Draft only. This combination needs a supported iOS route or an identified Air command." }
+        if trigger == .incomingCall { return "Refresh once after opening Air Companion. Incoming calls can then vibrate while the app stays open. Locked/background delivery is not supported; busy or unavailable bands are skipped." }
+        return action == .bandVibration ? "Vibrates once per day after a refresh reaches your goal. Each group switches intensity and restores it. Requires an available Air with vibration on; steps are not monitored continuously." : "Notifies this iPhone once per day after a refresh reaches your goal. Steps are not monitored continuously."
+    }
 }
 struct RuleReceipt: Codable, Identifiable {
     var id = UUID()
@@ -107,14 +116,15 @@ struct RuleReceipt: Codable, Identifiable {
     let ruleID: UUID
     let day: Date
     let simulated: Bool
-    let message: String
+    var message: String
+    var sourceEventID: String? = nil
 }
 enum AutomationEngine {
     /// Consumes a current-day snapshot. One delivery per rule per local day,
     /// including after relaunch, repeated refreshes, or a same-day goal change.
     static func eligible(_ rule: AutomationRule, steps: Int, goal: Int, readingDate: Date, now: Date,
                          receipts: [RuleReceipt], calendar: Calendar = .current) -> Bool {
-        guard rule.enabled, rule.canRun, goal > 0, steps >= goal,
+        guard rule.enabled, rule.canRun, rule.trigger == .stepGoal, goal > 0, steps >= goal,
               calendar.isDate(readingDate, inSameDayAs: now) else { return false }
         return !receipts.contains { $0.ruleID == rule.id && !$0.simulated && calendar.isDate($0.day, inSameDayAs: now) }
     }

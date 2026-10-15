@@ -4,16 +4,63 @@ import UniformTypeIdentifiers
 @main
 struct AirApp: App {
     @StateObject private var band = BandConnection()
-    @StateObject private var library = AppStore()
+    @StateObject private var library: AppStore
     @StateObject private var health = HealthImport()
     @StateObject private var delivery = AutomationDelivery()
     @Environment(\.scenePhase) private var scene
+    @State private var diagnosticKeepAwake = false
+    init() {
+        let arguments = ProcessInfo.processInfo.arguments
+        let directory = ProcessInfo.processInfo.arguments.contains("--diagnostic-step-goal")
+            ? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("acceptance-library")
+            : arguments.contains("--diagnostic-call") ? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("acceptance-call-library") : nil
+        _library = StateObject(wrappedValue: AppStore(directory: directory))
+    }
     var body: some Scene {
         WindowGroup {
             AirView(band: band)
                 .environmentObject(library).environmentObject(health).environmentObject(delivery)
                 .onAppear {
+                    delivery.bind(library: library, band: band)
+                    if ProcessInfo.processInfo.arguments.contains("--diagnostic-call") {
+                        diagnosticKeepAwake = true
+                        UIApplication.shared.isIdleTimerDisabled = true
+                        Timer.scheduledTimer(withTimeInterval: 300, repeats: false) { _ in
+                            diagnosticKeepAwake = false
+                            UIApplication.shared.isIdleTimerDisabled = band.active
+                        }
+                    }
                     if ProcessInfo.processInfo.arguments.contains("--preview") { library.setPreview(true); band.setPreview(true) }
+                    else if ProcessInfo.processInfo.arguments.contains("--diagnostic-step-goal") || ProcessInfo.processInfo.arguments.contains("--diagnostic-call") {
+                        // Isolated acceptance library: never change the owner's
+                        // real goal, rules, workout history or receipts.
+                        let id = UUID(uuidString: "00000000-0000-4000-8000-000000000001")!
+                        _ = library.change { data in
+                            data.goal = 1
+                            if !data.rules.contains(where: { $0.id == id }) {
+                                var rule = AutomationRule(); rule.id = id; rule.action = .bandVibration
+                                if ProcessInfo.processInfo.arguments.contains("--diagnostic-call") { rule.trigger = .incomingCall }
+                                data.rules.append(rule)
+                            }
+                        }
+                        band.enableDiagnosticCapture(); band.start()
+                    }
+                    else if ProcessInfo.processInfo.arguments.contains("--diagnostic-refresh") {
+                        // Keep a USB-initiated check alive through Auto-Lock. This
+                        // does not unlock the phone or change its lock settings.
+                        UIApplication.shared.isIdleTimerDisabled = true
+                        band.enableDiagnosticCapture()
+                        band.start()
+                    } else if let index = ProcessInfo.processInfo.arguments.firstIndex(of: "--diagnostic"), ProcessInfo.processInfo.arguments.count > index + 1 {
+                        let arguments = ProcessInfo.processInfo.arguments
+                        let alarmID = arguments.count > index + 2 ? UInt64(arguments[index + 2]) : nil
+                        UIApplication.shared.isIdleTimerDisabled = true
+                        band.runDiagnostic(arguments[index + 1], alarmID: alarmID)
+                        if !band.active { UIApplication.shared.isIdleTimerDisabled = false }
+                    }
+                }
+                .onChange(of: band.active) { _, active in
+                    UIApplication.shared.isIdleTimerDisabled = active || diagnosticKeepAwake
                 }
                 .onChange(of: band.activityUpdateID) { _, _ in
                     guard let reading = band.activity, !library.preview else { return }
@@ -29,7 +76,11 @@ struct AirApp: App {
                 .alert("Couldn’t save", isPresented: Binding(get: { library.error != nil }, set: { if !$0 { library.error = nil } })) { Button("OK") { library.error = nil } } message: { Text(library.error ?? "") }
                 .onChange(of: scene) { _, state in
                     if state == .active { band.refreshKeys() }
-                    else if state == .background { band.stop() }
+                    else if state == .background {
+                        diagnosticKeepAwake = false
+                        UIApplication.shared.isIdleTimerDisabled = false
+                        band.stop()
+                    }
                 }
         }
     }
@@ -42,6 +93,11 @@ struct AirView: View {
     @ObservedObject var band: BandConnection
     var body: some View {
         VStack(spacing: 0) {
+            if ProcessInfo.processInfo.arguments.contains("--diagnostic-step-goal") {
+                Text("Acceptance check · temporary goal & history").font(.caption).frame(maxWidth: .infinity).padding(8).background(.yellow.opacity(0.16))
+            } else if ProcessInfo.processInfo.arguments.contains("--diagnostic-call") {
+                Text("Call acceptance · temporary rule").font(.caption).frame(maxWidth: .infinity).padding(8).background(.yellow.opacity(0.16))
+            }
             if library.preview {
                 HStack {
                     Image(systemName: "play.rectangle"); Text("Preview · Example data"); Spacer()
@@ -229,6 +285,9 @@ private struct AlarmEditor: View {
                         }.navigationTitle("Repeat")
                     } label: { LabeledContent("Repeat", value: days == 0 ? "Never" : days == 127 ? "Every day" : "\(days.nonzeroBitCount) days") }
                 } footer: { Text("Times follow your band’s clock. Existing snooze behavior is preserved. Close Google Health before saving. Changes are checked against a fresh read.") }
+                if alarm == nil && !enabled {
+                    Section { Text("Air initially enables new alarms. Keep the app open while it turns the new alarm off and verifies the result.").font(.footnote).foregroundStyle(.secondary) }
+                }
             }
             .navigationTitle(alarm == nil ? "New alarm" : "Edit alarm").navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -260,14 +319,14 @@ private struct BandView: View {
                         Image(systemName: "sensor.tag.radiowaves.forward.fill").font(.largeTitle).foregroundStyle(airTint)
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Fitbit Air").font(.headline)
-                            Label(band.keysReady ? "Secure connection ready" : "Device key needed", systemImage: band.keysReady ? "lock.shield" : "key")
+                            Label(library.preview ? "Example band" : band.keysReady ? "Ready to connect" : "Device key needed", systemImage: library.preview ? "play.circle" : band.keysReady ? "lock.shield" : "key")
                                 .font(.footnote).foregroundStyle(.secondary)
                         }.padding(.vertical, 10)
                     }
                     ConnectionRow(band: band)
                 }
                 Section {
-                    NavigationLink { AutomationsView() } label: { Label("Automations", systemImage: "bolt") }
+                    NavigationLink { AutomationsView(band: band) } label: { Label("Automations", systemImage: "bolt") }
                     NavigationLink { HealthSettingsView() } label: { Label("Apple Health", systemImage: "heart.text.clipboard") }
                     NavigationLink { DataQualityView() } label: { Label("Methods & privacy", systemImage: "hand.raised") }
                 }
@@ -277,12 +336,15 @@ private struct BandView: View {
                         Picker("Intensity", selection: Binding(get: { haptic.intensity }, set: { band.setIntensity($0) })) {
                             ForEach((band.capabilities?.hapticIntensities ?? []).filter { (1...3).contains($0) }.sorted(), id: \.self) { Text(HapticSetting.name($0)).tag($0) }
                         }.disabled(band.active)
+                        if [2, 3].contains(haptic.intensity), band.capabilities?.hapticIntensities.isSuperset(of: [2, 3]) == true {
+                            Button("Test short vibration", systemImage: "waveform") { band.testVibration() }.disabled(band.active)
+                        }
                     }
-                    Text("Intensity controls appear only after the band advertises support and returns its current setting. Custom patterns and step-goal vibrations still need a verified event route.").font(.footnote).foregroundStyle(.secondary)
+                    Text("Each short group uses the band’s intensity feedback. Your original setting is restored and checked afterward. Vibration must already be on.").font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("iPhone notifications") {
                     LabeledContent("System sharing", value: band.notificationAccess ? "Authorized" : "Not authorized")
-                    Text("Call and app notification vibrations are not enabled yet. They require a notification route supported by both iOS and your band.").font(.footnote).foregroundStyle(.secondary)
+                    Text("Incoming-call rules can vibrate while Air Companion is open. Locked/background calls and other apps’ notifications need a supported system route and are not forwarded.").font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("Status light") {
                     Label("White · normal battery / charging", systemImage: "circle")
@@ -300,7 +362,7 @@ private struct BandView: View {
                     if let importMessage { Text(importMessage).font(.footnote).foregroundStyle(.secondary) }
                 }
                 Section {
-                    Text("Air Companion · 0.2 development build").font(.footnote).foregroundStyle(.secondary)
+                    Text("Air Companion · 0.3 development build").font(.footnote).foregroundStyle(.secondary)
                     Text("Your device keys stay in this iPhone’s Keychain. No account login or cloud service is used by this app.").font(.footnote).foregroundStyle(.secondary)
                 }
             }.navigationTitle("My Air")
@@ -341,9 +403,11 @@ struct DataQualityView: View {
             Section("Privacy") {
                 Text("No analytics, advertising or cloud account. Keys live in device-only Keychain storage. Health history, workouts and alarm backups use protected files on this iPhone. Apple’s device backup settings may include these files. Preview examples are never written to your real library.")
                 Text("Apple Health access is read-only. You can revoke it in the Health app. Removing access does not erase previously imported history.")
+                Text("Call rules use call state and local event identifiers. They do not read callers’ numbers, contacts or call audio.")
             }
-            Section("Development status") {
-                Text("A real Air alarm read has succeeded. Alarm writes, activity reads and later reconnections still need device testing. Custom band vibration, light colors, iPhone notification forwarding and gesture events have no verified Air transport yet. Saved rules cannot enable missing firmware capabilities.")
+            Section("Availability") {
+                Text("Alarms, activity snapshots and intensity-feedback vibrations have been tested on Air. Step-goal rules run after a refresh. Call rules require this app to remain open.")
+                Text("Locked/background calls, other apps’ notifications, custom light colors and double-tap phone actions are not supported yet. Those combinations stay as drafts.")
             }
         }.navigationTitle("Methods & privacy").navigationBarTitleDisplayMode(.inline)
     }

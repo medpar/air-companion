@@ -190,7 +190,7 @@ int air_transport_read(AirTransport* self, unsigned resource) {
         case 1: return request(self, GG_COAP_METHOD_GET, "settings", "capabilities", NULL, 0);
         case 2: return request(self, GG_COAP_METHOD_GET, "liveactivity", NULL, NULL, 0);
         case 3: {
-            const uint8_t query[] = { 0x08, 0x01 }; /* SettingsRequest: HAPTICS */
+            const uint8_t query[] = { 0x0A, 0x01, 0x01 }; /* packed SettingsRequest.setting_type: HAPTICS */
             return request(self, GG_COAP_METHOD_PUT, "settings", NULL, query, sizeof(query));
         }
         default: return GG_ERROR_INVALID_PARAMETERS;

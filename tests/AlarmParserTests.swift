@@ -44,6 +44,15 @@ import Foundation
         try check(creation.verified(before: original, after: list([(3, protectedConfig), (5, config), (8, newConfig)])))
         check(!creation.verified(before: original, after: original))
         check(!creation.validate(before: AlarmList(maximum: 2, smartWakeSupported: true, alarms: original.alarms)))
+        let disabled = try AlarmDraft(hour: 12, minute: 34, enabled: false, smartWake: false).configuration()
+        let forcedEnabled = try Proto(disabled).replacing(1, with: int(1, 1))
+        let disabledCreation = AlarmChange.create(disabled)
+        let forcedList = try list([(3, protectedConfig), (5, config), (0, forcedEnabled)])
+        let correction = disabledCreation.activationCorrection(before: original, after: forcedList)
+        precondition(correction?.0 == 0 && correction?.1 == disabled)
+        try check(disabledCreation.activationCorrection(before: original, after: list([(3, edited), (5, config), (0, forcedEnabled)])) == nil)
+        try check(disabledCreation.activationCorrection(before: original, after: list([(3, protectedConfig), (5, config), (0, edited)])) == nil)
+        check(creation.activationCorrection(before: original, after: forcedList) == nil)
         let deletion = AlarmChange.delete(original.alarms[0])
         try check(deletion.verified(before: original, after: list([(5, config)])))
         try check(!deletion.verified(before: original, after: list([(5, edited)])))
@@ -63,6 +72,16 @@ import Foundation
         let unknownHaptic = try Proto(hapticChanged.configuration).fields[70]
         precondition(unknownHaptic == [.bytes(Data([1, 2]))])
         do { _ = try haptic.response(changingTo: 4); fatalError("Accepted unknown intensity") } catch {}
+        let pulse = try HapticPulseTransaction(original: haptic, supported: [2, 3])
+        precondition(pulse.recovery(for: haptic) == .alreadyRestored)
+        precondition(pulse.recovery(for: hapticChanged) == .restore)
+        let externalChange = try HapticSetting(data: bytes(1, bytes(1, int(1, 3) + bytes(70, Data([9])))))
+        precondition(pulse.recovery(for: externalChange) == .conflict)
+        let persistedPulse = try JSONDecoder().decode(HapticPulseTransaction.self, from: JSONEncoder().encode(pulse))
+        precondition(persistedPulse.recovery(for: hapticChanged) == .restore)
+        do { _ = try HapticPulseTransaction(original: haptic, supported: [2]); fatalError("Accepted unsupported alternate") } catch {}
+        let off = try HapticSetting(data: haptic.response(changingTo: 1))
+        do { _ = try HapticPulseTransaction(original: off, supported: [1, 2, 3]); fatalError("Overrode vibration off") } catch {}
         if CommandLine.arguments.count > 1 {
             let live = try AlarmList(data: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1])))
             precondition(live.maximum == 8 && live.smartWakeSupported && live.alarms.count == 2)

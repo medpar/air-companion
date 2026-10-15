@@ -239,6 +239,7 @@ private struct WorkoutEditor: View {
 }
 
 struct AutomationsView: View {
+    @ObservedObject var band: BandConnection
     @EnvironmentObject private var library: AppStore
     @EnvironmentObject private var delivery: AutomationDelivery
     @State private var editing: AutomationRule?
@@ -246,7 +247,7 @@ struct AutomationsView: View {
         List {
             Section {
                 Text("A small action at the right moment").font(.headline)
-                Text("Daily step alerts can notify this iPhone after a refresh. Band outputs and gesture inputs are saved as drafts until their protocol is verified.").font(.subheadline).foregroundStyle(.secondary)
+                Text("Celebrate your step goal after a refresh, or feel an incoming call while this app is open. Lights, other apps’ notifications and gestures remain unavailable.").font(.subheadline).foregroundStyle(.secondary)
             }
             Section("Rules") {
                 if library.data.rules.isEmpty { Text("Add your first rule.").foregroundStyle(.secondary) }
@@ -254,7 +255,7 @@ struct AutomationsView: View {
                     Button { editing = rule } label: {
                         VStack(alignment: .leading, spacing: 5) {
                             Text(rule.title).foregroundStyle(.primary)
-                            Text(!rule.enabled ? "Off" : rule.canRun ? "On · checks after refresh" : "Draft · band support required").font(.caption).foregroundStyle(rule.canRun && rule.enabled ? airTint : .secondary)
+                            Text(!rule.enabled ? "Off" : rule.canRun ? (rule.trigger == .incomingCall ? "On · while this app is open" : "On · checks after refresh") : "Draft · support required").font(.caption).foregroundStyle(rule.canRun && rule.enabled ? airTint : .secondary)
                         }.padding(.vertical, 4)
                     }
                 }
@@ -268,10 +269,11 @@ struct AutomationsView: View {
             }
         }.navigationTitle("Automations").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Add rule", systemImage: "plus") { editing = AutomationRule() } } }
-            .sheet(item: $editing) { RuleEditor(rule: $0) }
+            .sheet(item: $editing) { RuleEditor(band: band, rule: $0) }
     }
 }
 private struct RuleEditor: View {
+    @ObservedObject var band: BandConnection
     @EnvironmentObject private var library: AppStore
     @EnvironmentObject private var delivery: AutomationDelivery
     @Environment(\.dismiss) private var dismiss
@@ -284,11 +286,23 @@ private struct RuleEditor: View {
                     Picker("Then", selection: $rule.action) { ForEach(RuleAction.allCases) { Text($0.title).tag($0) } }
                     Toggle("Enabled", isOn: $rule.enabled)
                 }
-                if rule.action == .bandVibration { Section("Desired pattern") { Picker("Pattern", selection: $rule.pattern) { ForEach(["One short pulse", "Two short pulses", "One long pulse"], id: \.self) { Text($0) } } } }
+                if rule.action == .bandVibration {
+                    Section("Vibration") {
+                        Picker("Pattern", selection: $rule.pattern) {
+                            ForEach(["Short vibration", "Two groups", "Three groups"] + (rule.vibrationGroups == nil ? [rule.pattern] : []), id: \.self) { Text($0).tag($0) }
+                        }
+                        Text("Each group uses the Air’s intensity feedback and restores the original value. This does not control the motor’s exact waveform.").font(.footnote).foregroundStyle(.secondary)
+                        if let groups = rule.vibrationGroups, !library.preview {
+                            Button(band.active ? "Working…" : "Try on band", systemImage: "waveform") { band.testVibration(groups: groups) }
+                                .disabled(!band.canPulse)
+                            Text(band.status).font(.footnote).foregroundStyle(.secondary)
+                        }
+                    }
+                }
                 if rule.action == .bandLight { Section("Desired light") { Picker("Color", selection: $rule.light) { ForEach(["White", "Red"], id: \.self) { Text($0) } } } }
                 if rule.action == .shortcut { Section("Shortcut") { TextField("Shortcut name", text: $rule.shortcut) } }
                 Section {
-                    Text(rule.canRun ? "Checks your daily total when you refresh. Delivers at most one iPhone notification per day. It does not vibrate the band or monitor steps continuously." : "Draft only. This rule cannot run yet. iPhone-wide notification forwarding needs a supported system route; band lights, haptics and double-tap events still need verified Air commands. No speculative commands are sent.")
+                    Text(rule.executionNote)
                         .font(.footnote).foregroundStyle(.secondary)
                     Button("Preview in event log") { delivery.preview(rule, library: library) }
                 }

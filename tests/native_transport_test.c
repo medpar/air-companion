@@ -40,7 +40,7 @@ static GG_Result request(GG_CoapRequestHandler* _self, GG_CoapEndpoint* endpoint
     CHECK(!GG_CoapMessage_GetOption(msg, GG_COAP_MESSAGE_OPTION_URI_PATH, &path, 0));
     if (path.value.string.length == 8 && !memcmp(path.value.string.chars, "settings", 8)) {
         if (method == GG_COAP_METHOD_PUT) {
-            const uint8_t query[] = { 8, 1 };
+            const uint8_t query[] = { 10, 1, 1 }; /* packed repeated setting_type */
             CHECK(GG_CoapMessage_GetPayloadSize(msg) == sizeof(query));
             CHECK(!memcmp(GG_CoapMessage_GetPayload(msg), query, sizeof(query)));
             return GG_CoapEndpoint_CreateResponse(endpoint, msg, 69, NULL, 0, haptic_payload, sizeof(haptic_payload), result);

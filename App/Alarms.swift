@@ -209,4 +209,20 @@ enum AlarmChange: Codable {
             return after.alarms.count == before.alarms.count + 1 && added.count == 1 && same(added[0].configuration, config)
         }
     }
+    /// This Air activates a newly created alarm even when POST requests false,
+    /// and may return 5.00 despite creating it. Correct only that observed field
+    /// after identifying exactly one new alarm; never repeat the POST.
+    func activationCorrection(before: AlarmList, after: AlarmList) -> (UInt64, Data)? {
+        guard case .create(let wanted) = self,
+              let desired = try? Proto(wanted), (try? desired.oneBool(1)) == false,
+              before.maximum == after.maximum, after.alarms.count == before.alarms.count + 1 else { return nil }
+        let added = after.alarms.filter { a in !before.alarms.contains { $0.id == a.id } }
+        guard added.count == 1, let alarm = added.first, alarm.enabled,
+              let corrected = try? Proto(alarm.configuration).replacing(1, with: Proto.integer(1, 0)),
+              let fields = try? Proto(corrected).fields, fields == desired.fields else { return nil }
+        let adjusted = AlarmList(maximum: after.maximum, smartWakeSupported: after.smartWakeSupported,
+            alarms: after.alarms.map { $0.id == alarm.id ? BandAlarm(id: alarm.id, enabled: false, hour: alarm.hour, minute: alarm.minute, smartWake: alarm.smartWake, days: alarm.days, configuration: corrected, recurring: alarm.recurring) : $0 })
+        guard verified(before: before, after: adjusted) else { return nil }
+        return (alarm.id, corrected)
+    }
 }
