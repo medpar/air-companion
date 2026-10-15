@@ -122,3 +122,16 @@ well as missing, zero, out-of-range, duplicate and wrong-wire-type fixtures.
 Only battery percentage and its read time are persisted, not the response's
 Bluetooth address or other identifiers. A failed read retains the old timestamp;
 an absent field stays unavailable rather than becoming a false zero.
+
+## Patterns and event codes (Pebble 1.0)
+
+A pattern is one to four intensity-feedback groups. Each group switches to the
+alternate active intensity, waits for the acknowledgement and 800 ms, reads the
+setting, restores the original and reads it back. Only then does the gap before
+the next group start (Double 0.8 s, Long gap 1.8 s, Urgent 0.45/1.35/0.45 s).
+The gap sequence follows the Android notification bridge's patterns; perceived
+timing includes Bluetooth round trips.
+
+Event IDs are four ASCII characters packed big-endian (`rset` = 0x72736574).
+Unknown IDs are now reported as `?abcd`, or as hex when not printable, so a
+future tap or wrist event would be recognisable from the in-app listening screen.

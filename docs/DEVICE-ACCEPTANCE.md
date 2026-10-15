@@ -1,5 +1,35 @@
 # Device acceptance
 
+## Pebble 1.0 on 2026-10-15
+
+The redesigned app was signed with the owner's Personal Team and installed over
+the earlier build (same bundle identifier), keeping keys and history. Results
+from the physical Air, using USB diagnostics and app metadata only:
+
+- **Full sync:** authenticated, read 2 alarms, capabilities, haptic setting,
+  battery and activity in about 5 s, then disconnected.
+- **Activity-only read:** begin to clean close in about 3 s (11 fragments sent).
+- **Urgent pattern:** four buzzes with the 0.45/1.35/0.45 s gaps; the original
+  intensity was restored and read back after each one. The owner felt the
+  pattern.
+- **Tap discovery:** a read-only listening window while the owner firmly
+  double-tapped the band and took it off once. Only the session-start `rset`
+  events arrived. About a minute in, the link ended, plausibly when the band was
+  removed. No tap or wrist event is exported on this route, so no tap trigger is
+  offered.
+- **Background execution:** with keep-alive started for that process only, Pebble
+  was sent to the background by opening Settings. Its scheduled check ran 55 s
+  later in the `background` state: connected, authenticated, read activity and
+  closed cleanly. The process stayed alive afterwards.
+- **Not yet tested on the device:** a real call while the phone is locked, a
+  Shortcuts automation, live Heart Rate Profile streaming (needs *Share heart
+  rate* on) and Apple Health import with the new metrics.
+
+Device keys were migrated to after-first-unlock Keychain accessibility, and
+band files now use until-first-authentication protection, so a locked phone can
+deliver alerts.
+
+
 ## Verified on 2026-10-15
 
 The owner reconnected the iPhone and authorized USB-controlled testing. The

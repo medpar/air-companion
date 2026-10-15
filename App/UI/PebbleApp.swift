@@ -69,6 +69,14 @@ struct PebbleApp: App {
         if arguments.contains("--diagnostic-refresh") { band.enableDiagnosticCapture(); band.start(); return }
         guard let index = arguments.firstIndex(of: "--diagnostic"), arguments.count > index + 1 else { return }
         let operation = arguments[index + 1], argument = arguments.count > index + 2 ? arguments[index + 2] : nil
+        if operation == "background-check" {
+            // Starts keep-alive for this process only (saved settings unchanged)
+            // and reads activity once, 60 s later, to prove background access.
+            services.keepAlive.start()
+            band.enableDiagnosticCapture()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 60) { band.readActivity() }
+            return
+        }
         if operation == "pattern", let pattern = argument.flatMap(BuzzPattern.init(rawValue:)) {
             band.enableDiagnosticCapture(); band.vibrate(pattern); return
         }

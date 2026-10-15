@@ -229,7 +229,7 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
         active = true; didRead = false; hasStarted = false; sent = 0; received = 0; events = []; fragments = []; outgoing = []; observedEventCount = 0; systemSharingReady = false
         if case .observe = requested { observedEvents = [] }
         status = "Finding your Air"; detail = "Keep your band close to your iPhone."
-        record("begin")
+        record("begin", value: UIApplication.shared.applicationState == .background ? "background" : "foreground")
         let observing: Bool = { if case .observe = requested { return true }; return false }()
         let sharing: Bool = { if case .systemSharing = requested { return true }; return false }()
         timeout = Timer(timeInterval: observing ? 120 : 35, repeats: false) { [weak self] _ in
