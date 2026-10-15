@@ -183,12 +183,14 @@ apps' notifications or establish locked/background delivery.
   (double/triple 1.8 s, long 3.4 s, urgent 0.9 s) because ~1.2 s spacing felt
   identical — that is the Bluetooth round-trip floor, the reason sub-second
   rhythm is impossible.
-- **Background call path added as a diagnostic.** `--diagnostic call-check [delay]`
-  starts keep-alive for that process and reports a CallKit test call so the
-  call → alert → band path can be exercised without a real caller. A background
-  run (app sent to Settings) connected, authenticated, read activity and closed
-  in the `background` state, with the process staying alive. A locked-phone call
-  was not completed in this session (device was locked remotely).
+- **Background call → vibration verified.** With the `voip` background mode added,
+  `--diagnostic call-check [delay]` reports a CallKit test call (keep-alive on for
+  that process). With Pebble sent to the background (Settings opened), the call was
+  reported in the `background` state and the band then ran the Urgent pattern and
+  restored intensity ("Vibration complete") — the full CallKit → CXCallObserver →
+  band chain while backgrounded. The locked screen uses the same keep-alive runtime
+  and an after-first-unlock Keychain, so it is expected to behave the same; a real
+  locked incoming call still needs one owner confirmation.
 - **Advanced health shipped.** Readiness, EWMA acute:chronic workload, HRV
   coefficient of variation, social jetlag, sleep regularity and VO₂max norms,
   all covered by the offline fitness tests.

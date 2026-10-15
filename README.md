@@ -22,7 +22,7 @@ No firmware changes, no account, no cloud.
 | Vibration intensity (Off/Low/High) | Advertised options only, verified read-back | Yes |
 | Vibration patterns: Single, Double, Triple, Long gap, Urgent | 1–5 buzzes via intensity toggle, spaced so the count is feelable; restored and verified | Yes — owner counted Triple's 3 buzzes on the band |
 | Per-event alerts: calls, daily goal, step milestones, move reminder, Shortcuts | Each event has its own pattern, plus an optional iPhone notification or webhook | Goal buzz and foreground call buzz verified earlier; new engine covered by tests |
-| Background alerts | Opt-in **Keep Pebble running** (silent mixable audio session) plus adaptive step checks; iOS background refresh when off | Background band read verified; a locked-phone call not yet tested |
+| Background alerts | Opt-in **Keep Pebble running** (silent mixable audio session, `voip` + `audio` modes) plus adaptive step checks | Background call → band buzz verified via CallKit test; real locked call needs one owner confirmation |
 | Shortcuts & Siri | App Intents: **Buzz Band**, **Get Steps**, **Get Band Battery** | Built and registered; run on device pending |
 | Steps, heart rate, battery | Activity-only read (~3 s) or full sync (~5 s) | Yes |
 | Live heart rate | Standard Bluetooth Heart Rate Profile while *Share heart rate* is on in Google Health; zones, RMSSD from RR intervals, Edwards load | Needs sharing turned on |

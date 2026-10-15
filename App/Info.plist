@@ -11,7 +11,7 @@
 <key>LSRequiresIPhoneOS</key><true/>
 <key>NSBluetoothAlwaysUsageDescription</key><string>Pebble connects to your Fitbit Air to manage alarms, read activity and deliver vibration alerts.</string>
 <key>NSHealthShareUsageDescription</key><string>Pebble reads steps, sleep, resting heart rate, HRV, workouts and your age to show trends against your own usual range.</string>
-<key>UIBackgroundModes</key><array><string>bluetooth-central</string><string>audio</string><string>fetch</string></array>
+<key>UIBackgroundModes</key><array><string>bluetooth-central</string><string>audio</string><string>fetch</string><string>voip</string></array>
 <key>BGTaskSchedulerPermittedIdentifiers</key><array><string>com.medpar.air.companion.steps</string></array>
 <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
 <key>UILaunchScreen</key><dict/>
