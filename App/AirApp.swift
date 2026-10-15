@@ -13,7 +13,8 @@ struct AirApp: App {
         let arguments = ProcessInfo.processInfo.arguments
         let directory = ProcessInfo.processInfo.arguments.contains("--diagnostic-step-goal")
             ? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("acceptance-library")
-            : arguments.contains("--diagnostic-call") ? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("acceptance-call-library") : nil
+            : arguments.contains("--diagnostic-call") ? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("acceptance-call-library")
+            : arguments.contains("--diagnostic-notification") ? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("acceptance-notification-library") : nil
         _library = StateObject(wrappedValue: AppStore(directory: directory))
     }
     var body: some Scene {
@@ -22,15 +23,20 @@ struct AirApp: App {
                 .environmentObject(library).environmentObject(health).environmentObject(delivery)
                 .onAppear {
                     delivery.bind(library: library, band: band)
-                    if ProcessInfo.processInfo.arguments.contains("--diagnostic-call") {
+                    if ProcessInfo.processInfo.arguments.contains("--diagnostic-call") || ProcessInfo.processInfo.arguments.contains("--diagnostic-notification") {
                         diagnosticKeepAwake = true
                         UIApplication.shared.isIdleTimerDisabled = true
-                        Timer.scheduledTimer(withTimeInterval: 300, repeats: false) { _ in
+                        let duration: TimeInterval = ProcessInfo.processInfo.arguments.contains("--diagnostic-call") ? 3600 : 60
+                        Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { _ in
                             diagnosticKeepAwake = false
                             UIApplication.shared.isIdleTimerDisabled = band.active
                         }
                     }
                     if ProcessInfo.processInfo.arguments.contains("--preview") { library.setPreview(true); band.setPreview(true) }
+                    else if ProcessInfo.processInfo.arguments.contains("--diagnostic-notification") {
+                        band.enableDiagnosticCapture()
+                        delivery.sendTestNotification()
+                    }
                     else if ProcessInfo.processInfo.arguments.contains("--diagnostic-step-goal") || ProcessInfo.processInfo.arguments.contains("--diagnostic-call") {
                         // Isolated acceptance library: never change the owner's
                         // real goal, rules, workout history or receipts.
@@ -60,7 +66,10 @@ struct AirApp: App {
                     }
                 }
                 .onChange(of: band.active) { _, active in
-                    UIApplication.shared.isIdleTimerDisabled = active || diagnosticKeepAwake
+                    UIApplication.shared.isIdleTimerDisabled = active || diagnosticKeepAwake || delivery.testingNotification
+                }
+                .onChange(of: delivery.testingNotification) { _, testing in
+                    UIApplication.shared.isIdleTimerDisabled = testing || band.active || diagnosticKeepAwake
                 }
                 .onChange(of: band.activityUpdateID) { _, _ in
                     guard let reading = band.activity, !library.preview else { return }
@@ -77,6 +86,7 @@ struct AirApp: App {
                 .onChange(of: scene) { _, state in
                     if state == .active { band.refreshKeys() }
                     else if state == .background {
+                        delivery.cancelNotificationTest()
                         diagnosticKeepAwake = false
                         UIApplication.shared.isIdleTimerDisabled = false
                         band.stop()
@@ -97,6 +107,8 @@ struct AirView: View {
                 Text("Acceptance check · temporary goal & history").font(.caption).frame(maxWidth: .infinity).padding(8).background(.yellow.opacity(0.16))
             } else if ProcessInfo.processInfo.arguments.contains("--diagnostic-call") {
                 Text("Call acceptance · temporary rule").font(.caption).frame(maxWidth: .infinity).padding(8).background(.yellow.opacity(0.16))
+            } else if ProcessInfo.processInfo.arguments.contains("--diagnostic-notification") {
+                Text("Notification test · temporary history").font(.caption).frame(maxWidth: .infinity).padding(8).background(.yellow.opacity(0.16))
             }
             if library.preview {
                 HStack {
@@ -308,6 +320,8 @@ private struct AlarmEditor: View {
 private struct BandView: View {
     @EnvironmentObject private var library: AppStore
     @EnvironmentObject private var health: HealthImport
+    @EnvironmentObject private var delivery: AutomationDelivery
+    @State private var testGroups = 3
     @State private var importing = false
     @State private var importMessage: String?
     @ObservedObject var band: BandConnection
@@ -324,6 +338,17 @@ private struct BandView: View {
                         }.padding(.vertical, 10)
                     }
                     ConnectionRow(band: band)
+                    if let info = band.deviceInfo, let percent = info.batteryPercent {
+                        LabeledContent {
+                            VStack(alignment: .trailing, spacing: 3) {
+                                Text("\(percent)%").monospacedDigit()
+                                Text("Read \(info.readAt.formatted(date: .abbreviated, time: .shortened))")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        } label: {
+                            Label("Battery", systemImage: percent <= 20 ? "battery.25percent" : "battery.75percent")
+                        }.accessibilityElement(children: .combine)
+                    }
                 }
                 Section {
                     NavigationLink { AutomationsView(band: band) } label: { Label("Automations", systemImage: "bolt") }
@@ -343,6 +368,16 @@ private struct BandView: View {
                     Text("Each short group uses the band’s intensity feedback. Your original setting is restored and checked afterward. Vibration must already be on.").font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("iPhone notifications") {
+                    Picker("Test pattern", selection: $testGroups) {
+                        Text("One group").tag(1)
+                        Text("Two groups").tag(2)
+                        Text("Three groups").tag(3)
+                    }.disabled(delivery.testingNotification)
+                    Button(delivery.testingNotification ? "Testing notification…" : "Send test notification", systemImage: "bell.badge") {
+                        delivery.sendTestNotification(groups: testGroups)
+                    }.disabled(!band.canStart || library.preview || delivery.testingNotification)
+                    if let message = delivery.message { Text(message).font(.footnote).foregroundStyle(.secondary) }
+                    Text("Connects first, then sends an Air Companion notification and vibrates when it arrives. Keep this app open for the test.").font(.footnote).foregroundStyle(.secondary)
                     LabeledContent("System sharing", value: band.notificationAccess ? "Authorized" : "Not authorized")
                     Text("Incoming-call rules can vibrate while Air Companion is open. Locked/background calls and other apps’ notifications need a supported system route and are not forwarded.").font(.footnote).foregroundStyle(.secondary)
                 }

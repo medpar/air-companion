@@ -8,12 +8,16 @@
 typedef struct AirTransport AirTransport;
 typedef int (*AirSend)(void* context, const uint8_t* bytes, size_t length);
 typedef void (*AirAlarmResponse)(void* context, int code, const uint8_t* bytes, size_t length);
+typedef void (*AirEventObserver)(void* context, const uint8_t* bytes, size_t length);
 /* send returns 0 for accepted, 1 for temporary backpressure, -1 for failure. */
 AirTransport* air_transport_create(uint16_t mtu, const uint32_t ids[2],
                                   const uint8_t keys[32], AirSend send,
                                   AirAlarmResponse response, void* context);
 void air_transport_destroy(AirTransport* transport);
 int air_transport_start(AirTransport* transport);
+/* Optional observation of inbound event payloads. Keeps the existing 4.04
+ * response; does not acknowledge sync, subscribe, or change band settings. */
+int air_transport_observe_events(AirTransport* transport, AirEventObserver observer);
 int air_transport_receive(AirTransport* transport, const uint8_t* bytes, size_t length);
 void air_transport_writable(AirTransport* transport);
 /* Pumps nonblocking work and returns next timer delay in milliseconds.
@@ -23,7 +27,8 @@ int air_transport_work(AirTransport* transport, uint32_t* next_delay);
 int air_transport_state(AirTransport* transport);
 /* Only GET /alarms, one request at a time, no automatic application retry. */
 int air_transport_read_alarms(AirTransport* transport);
-/* resource: 0=alarms, 1=settings/capabilities, 2=liveactivity, 3=haptic settings query (protocol PUT). */
+/* resource: 0=alarms, 1=settings/capabilities, 2=liveactivity,
+ * 3=haptic settings query (protocol PUT), 4=device/info. */
 int air_transport_read(AirTransport* transport, unsigned resource);
 /* Existing alarm configuration only; caller captures prior state and verifies
  * readback. No automatic retry, reset, provisioning, or firmware operation. */

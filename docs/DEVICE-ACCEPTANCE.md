@@ -29,6 +29,17 @@ and the library. No pairing, firmware, or factory settings were changed.
 - Final alarm snapshot exactly matched the original list. Google Health was
   relaunched successfully over USB afterward; its on-screen sync indicator was
   not available through the control surface, so full UI sync is not claimed.
+- The owner confirmed a real incoming call produced one vibration. The report
+  shows four seconds from connection start to the first intensity change and
+  seven seconds to verified restoration. The owner requested faster delivery
+  and multiple groups, with subsequent checks driven by local notifications.
+- A local test notification was delivered at 11:01:01.051 UTC. The first
+  vibration command was recorded in that same second; three groups completed
+  with three original-intensity verifications by 11:01:12.647 UTC. The band was
+  connected before scheduling the notification. This confirms the iOS callback
+  and device exchanges; it does not measure exact motor onset or establish
+  other-app/background notification forwarding. Two earlier attempts stopped
+  on background before any vibration; explicit keep-awake fixed the test run.
 
 Raw traces, snapshots, transaction journals and device identifiers remain
 private. Metadata reports are the evidence; launching a process alone is not
@@ -39,12 +50,13 @@ treated as successful sync or feature validation.
 1. Re-sign if provisioning has expired; install over the existing app to retain
    its Keychain and protected library. Do not delete or unpair the band.
 2. With Google Health closed, refresh once. Check reconnect/authentication,
-   alarm list, optional capabilities/haptic value, activity and clean disconnect.
+   alarm list, optional capabilities/haptic value, battery, activity and clean disconnect.
    If handshake stalls, use the metadata report before asking for another cycle.
 3. Alarm CRUD and recurrence read-back passed above. Scheduled ringing, actual
    recurrence over a day boundary, and smart-wake behavior remain untested.
-4. Run a real incoming-call check with the app open and a saved call rule.
-   This cannot establish locked/background support, which is not implemented.
+4. Foreground incoming-call delivery passed with one group; the preconnected
+   local-notification test passed with three groups and verified restoration.
+   Locked/background support is not implemented.
 5. Grant chosen Health permissions; verify source labels and a few known daily
    values. Log a workout and check timer recovery, effort/load and local storage.
 6. Grant notifications if desired. Use a deliberately chosen step goal/rule to
@@ -62,7 +74,10 @@ The signed development app accepts explicit `devicectl` launch arguments.
 Normal launch never starts Bluetooth automatically. The phone must be unlocked;
 app control cannot bypass its passcode.
 
-- `--diagnostic-refresh`: bounded read of alarms, capabilities, intensity and activity.
+- `--diagnostic-refresh`: bounded read of alarms, capabilities, intensity, battery and activity.
+- `--diagnostic events`: two-minute observation of incoming event names after the
+  normal reads. No phone actions or settings changes. Wrist/tap events still need
+  physical evidence; absence alone does not prove lack of support.
 - `--diagnostic vibration [1..3]`: read, run feedback groups, restore and verify.
 - `--diagnostic create-disabled-alarm`: create the fixed temporary 12:34 alarm;
   firmware activation is corrected and verified.
@@ -72,7 +87,19 @@ app control cannot bypass its passcode.
 - `--diagnostic-step-goal`: separate acceptance library, real reading, temporary
   one-step goal, persistent deduplication receipt.
 - `--diagnostic-call`: separate call acceptance library; keep the app visible
-  for up to five minutes while a real call is supplied externally.
+  for up to one hour while a real call is supplied externally.
+- `--diagnostic-notification`: separate test library; request notification
+  permission, connect and inspect haptic support/current setting, then schedule
+  a local notification two seconds later. The matching foreground delivery
+  callback requests three groups; the test stops on background or after 60
+  seconds. Metadata is in `Documents/notification-test-report.json`.
+
+The one-hour call build was installed and launched on 2026-10-15 at 10:44 UTC;
+authenticated refresh completed. The owner subsequently confirmed the call and
+switched further testing to app-generated notifications. Battery integration and
+stricter event observation were developed without disturbing the call window. Battery
+parsing matches an existing authenticated capture; its new refresh/UI path has
+simulator and synthetic protocol coverage, not yet a new physical app read.
 
 Read the protected metadata report at `Documents/connection-report.json` using
 `devicectl device copy from` with the app data-container domain. A successful

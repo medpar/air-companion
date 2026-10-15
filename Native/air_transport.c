@@ -18,6 +18,7 @@ struct AirTransport {
     GG_IMPLEMENTS(GG_DataSink);
     GG_IMPLEMENTS(GG_TlsKeyResolver);
     GG_IMPLEMENTS(GG_CoapResponseListener);
+    GG_IMPLEMENTS(GG_CoapRequestHandler);
     GG_Loop* loop;
     GG_Stack* stack;
     GG_CoapEndpoint* coap;
@@ -31,6 +32,7 @@ struct AirTransport {
     int reading;
     AirSend send;
     AirAlarmResponse response;
+    AirEventObserver event_observer;
     void* context;
 };
 
@@ -101,6 +103,26 @@ GG_IMPLEMENT_INTERFACE(AirTransport, GG_DataSource) { source_sink };
 GG_IMPLEMENT_INTERFACE(AirTransport, GG_DataSink) { send_data, set_listener };
 GG_IMPLEMENT_INTERFACE(AirTransport, GG_TlsKeyResolver) { resolve_key };
 GG_IMPLEMENT_INTERFACE(AirTransport, GG_CoapResponseListener) { on_ack, on_error, on_response };
+static GG_Result observe_event(GG_CoapRequestHandler* _self, GG_CoapEndpoint* endpoint,
+                              const GG_CoapMessage* message, GG_CoapResponder* responder,
+                              const GG_BufferMetadata* metadata, GG_CoapMessage** response) {
+    (void)responder; (void)metadata;
+    AirTransport* self = GG_SELF(AirTransport, GG_CoapRequestHandler);
+    size_t size = GG_CoapMessage_GetPayloadSize(message);
+    GG_CoapMessageOption path, extra;
+    /* Golden Gate dispatch also matches child paths. Observe only complete
+     * messages to the two known routes, never a fragment or another resource. */
+    int exact_path = GG_SUCCEEDED(GG_CoapMessage_GetOption(message, GG_COAP_MESSAGE_OPTION_URI_PATH, &path, 0)) &&
+        ((path.value.string.length == 6 && !memcmp(path.value.string.chars, "events", 6)) ||
+         (path.value.string.length == 12 && !memcmp(path.value.string.chars, "eventsSecure", 12))) &&
+        GG_FAILED(GG_CoapMessage_GetOption(message, GG_COAP_MESSAGE_OPTION_URI_PATH, &extra, 1));
+    int complete = GG_FAILED(GG_CoapMessage_GetOption(message, GG_COAP_MESSAGE_OPTION_BLOCK1, &extra, 0));
+    if (self->event_observer && exact_path && complete && size && size <= 128) {
+        self->event_observer(self->context, GG_CoapMessage_GetPayload(message), size);
+    }
+    return GG_CoapEndpoint_CreateResponse(endpoint, message, 132, NULL, 0, NULL, 0, response);
+}
+GG_IMPLEMENT_INTERFACE(AirTransport, GG_CoapRequestHandler) { observe_event };
 
 AirTransport* air_transport_create(uint16_t mtu, const uint32_t ids[2], const uint8_t keys[32],
                                   AirSend send, AirAlarmResponse response, void* context) {
@@ -115,6 +137,7 @@ AirTransport* air_transport_create(uint16_t mtu, const uint32_t ids[2], const ui
     GG_SET_INTERFACE(self, AirTransport, GG_DataSink);
     GG_SET_INTERFACE(self, AirTransport, GG_TlsKeyResolver);
     GG_SET_INTERFACE(self, AirTransport, GG_CoapResponseListener);
+    GG_SET_INTERFACE(self, AirTransport, GG_CoapRequestHandler);
     if (GG_FAILED(GG_Loop_Create(&self->loop)) || GG_FAILED(GG_Loop_BindToCurrentThread(self->loop))) goto fail;
     static const uint16_t ciphers[] = { GG_TLS_PSK_WITH_AES_128_CCM };
     GG_TlsServerOptions tls = { .base = { ciphers, 1 }, .key_resolver = GG_CAST(self, GG_TlsKeyResolver) };
@@ -145,6 +168,13 @@ void air_transport_destroy(AirTransport* self) {
     atomic_flag_clear(&transport_in_use);
 }
 int air_transport_start(AirTransport* self) { return self ? GG_Stack_Start(self->stack) : GG_ERROR_INVALID_PARAMETERS; }
+int air_transport_observe_events(AirTransport* self, AirEventObserver observer) {
+    if (!self || !self->coap || !observer) return GG_ERROR_INVALID_PARAMETERS;
+    self->event_observer = observer;
+    GG_Result result = GG_CoapEndpoint_RegisterRequestHandler(self->coap, "events", GG_COAP_REQUEST_HANDLER_FLAG_ALLOW_POST, GG_CAST(self, GG_CoapRequestHandler));
+    if (GG_FAILED(result)) return result;
+    return GG_CoapEndpoint_RegisterRequestHandler(self->coap, "eventsSecure", GG_COAP_REQUEST_HANDLER_FLAG_ALLOW_POST, GG_CAST(self, GG_CoapRequestHandler));
+}
 int air_transport_receive(AirTransport* self, const uint8_t* data, size_t length) {
     if (!self || !self->incoming || !data || !length || length > 512) return GG_ERROR_INVALID_PARAMETERS;
     GG_DynamicBuffer* buffer = NULL;
@@ -189,6 +219,7 @@ int air_transport_read(AirTransport* self, unsigned resource) {
         case 0: return request(self, GG_COAP_METHOD_GET, "alarms", NULL, NULL, 0);
         case 1: return request(self, GG_COAP_METHOD_GET, "settings", "capabilities", NULL, 0);
         case 2: return request(self, GG_COAP_METHOD_GET, "liveactivity", NULL, NULL, 0);
+        case 4: return request(self, GG_COAP_METHOD_GET, "device", "info", NULL, 0);
         case 3: {
             const uint8_t query[] = { 0x0A, 0x01, 0x01 }; /* packed SettingsRequest.setting_type: HAPTICS */
             return request(self, GG_COAP_METHOD_PUT, "settings", NULL, query, sizeof(query));

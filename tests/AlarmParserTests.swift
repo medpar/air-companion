@@ -82,10 +82,27 @@ import Foundation
         do { _ = try HapticPulseTransaction(original: haptic, supported: [2]); fatalError("Accepted unsupported alternate") } catch {}
         let off = try HapticSetting(data: haptic.response(changingTo: 1))
         do { _ = try HapticPulseTransaction(original: off, supported: [1, 2, 3]); fatalError("Overrode vibration off") } catch {}
+        try check(BandDeviceInfo(data: int(13, 76)).batteryPercent == 76)
+        try check(BandDeviceInfo(data: int(13, 0)).batteryPercent == 0)
+        try check(BandDeviceInfo(data: int(3, 1)).batteryPercent == nil)
+        for invalid in [int(13, 101), int(13, UInt64.max), int(13, 2) + int(13, 3), bytes(13, Data([1]))] {
+            do { _ = try BandDeviceInfo(data: invalid); fatalError("Accepted invalid battery") } catch {}
+        }
+        let wristEvents = int(1, 2003989291) + int(1, 2003989293) + int(1, 99)
+        try check(BandEvent.diagnosticNames(data: wristEvents) == ["wrs+", "wrs-", "unknown"])
+        try check(BandEvent.diagnosticNames(data: bytes(1, variable(1920165236) + variable(1885957735))) == ["rset", "ping"])
+        for invalid in [Data(), Data(repeating: 0, count: 129), bytes(1, Data([128])), (0..<33).reduce(Data()) { data, _ in data + int(1, 1) }] {
+            do { _ = try BandEvent.diagnosticNames(data: invalid); fatalError("Accepted invalid event batch") } catch {}
+        }
         if CommandLine.arguments.count > 1 {
             let live = try AlarmList(data: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1])))
             precondition(live.maximum == 8 && live.smartWakeSupported && live.alarms.count == 2)
             print("PASS: private captured alarm response matches Swift decoder")
+        }
+        if CommandLine.arguments.count > 2 {
+            let captured = try BandDeviceInfo(data: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[2])))
+            precondition(captured.batteryPercent != nil)
+            print("PASS: private authenticated device-info response matches Swift decoder")
         }
         print("PASS: alarm bounds, overflow, invalid boolean, duplicates, midnight, truncation")
     }

@@ -1,5 +1,39 @@
 import Foundation
 
+struct BandDeviceInfo: Codable {
+    let readAt: Date
+    let batteryPercent: Int?
+    init(data: Data) throws {
+        let body = try Proto(data)
+        let battery = try body.oneInt(13)
+        guard battery <= 100 else { throw Proto.Failure.invalid }
+        readAt = Date()
+        batteryPercent = body.fields[13] == nil ? nil : Int(battery)
+    }
+}
+
+enum BandEvent: UInt64 {
+    case reset = 1920165236, backgroundSync = 1651732067, connectedGPS = 1667723379
+    case ping = 1885957735, outbox = 1634690668, wristOn = 2003989291, wristOff = 2003989293
+    var diagnosticName: String {
+        switch self {
+        case .reset: return "rset"
+        case .backgroundSync: return "bsnc"
+        case .connectedGPS: return "cgps"
+        case .ping: return "ping"
+        case .outbox: return "aofl"
+        case .wristOn: return "wrs+"
+        case .wristOff: return "wrs-"
+        }
+    }
+    static func diagnosticNames(data: Data) throws -> [String] {
+        guard !data.isEmpty, data.count <= 128 else { throw Proto.Failure.invalid }
+        let values = try Proto(data).integers(1)
+        guard values.count <= 32 else { throw Proto.Failure.invalid }
+        return values.map { BandEvent(rawValue: $0)?.diagnosticName ?? "unknown" }
+    }
+}
+
 struct BandCapabilities {
     let settings: Set<UInt64>
     let hapticIntensities: Set<UInt64>

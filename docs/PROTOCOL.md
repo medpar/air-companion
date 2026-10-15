@@ -18,6 +18,7 @@ records. A custom read later succeeded on the real band.
 | `/settings` | PUT | **Query** haptic setting; this protocol uses PUT for a read |
 | `/settings` | POST | Change only an advertised haptic intensity |
 | `/liveactivity` | GET | Read current activity snapshot |
+| `/device/info` | GET | Read battery percentage (protobuf field 13) |
 
 Alarm/configuration/route definitions were recovered from static app analysis;
 live repeated GET responses validate the alarm decoder. Alarm write routes and
@@ -49,6 +50,15 @@ waits 800 ms, reads, restores only the known temporary state, and reads again.
 One to three groups are supported, with 800 ms between groups. A protected
 journal survives interruption; later connections recover before other work.
 Off is never overridden, and an unexpected configuration is never overwritten.
+
+Vibration-only sessions now skip the unrelated alarm read and begin with fresh
+capabilities/current intensity. The local-notification test prepares that
+connection before scheduling its alert. On the matching notification delivery,
+it re-reads current intensity on the established session before changing it.
+Preparation writes no settings. The session remains bounded and closes if the
+app backgrounds; if a temporary intensity is already applied, the existing
+bounded restoration path takes priority. This improves a foreground test path,
+not background delivery or access to other apps' notifications.
 
 The [Android notification bridge](https://github.com/paceaitian/fitbit-air-notification-bridge/tree/6fec57fafc68e03904f49d823248e38b07a54478)
 provided the intensity-feedback lead. Its Android notification permissions and
@@ -84,3 +94,31 @@ mobile-data keys and iOS-supported interfaces.
 
 No pairing changes, firmware updates, sync acknowledgements/deletions or unknown
 command probing are part of the app. Device keys and traces are never published.
+
+## Bounded event observation
+
+The optional `--diagnostic events` mode registers incoming POST `/events` and
+`/eventsSecure` handlers for two minutes. It accepts only these exact paths,
+payloads up to 128 bytes, and complete messages without Block1. It decodes at
+most 32 event IDs per message and records at most 128 names per session. It keeps
+the previous 4.04 response; it does not acknowledge sync, establish a subscription,
+or execute phone actions. Ordinary refresh and call mode do not install these
+handlers. A negative observation therefore cannot establish that an event is
+unsupported: firmware may require registration or a different acknowledgement.
+
+The shared EventSet schema uses repeated field 1 (packed or unpacked). Known IDs
+are `rset`, `bsnc`, `cgps`, `ping`, `aofl`, `wrs+` and `wrs-`. The original app's
+EventConsumer maps the last two to true/false wrist status. The Air's existing
+authenticated trace contains `rset` on both routes, not a wrist or tap event.
+The general TapGestureOption capability model only carries a name/display name;
+it is not evidence of a live exported Air gesture.
+
+## Device information
+
+The official app's authenticated capture includes four successful GET
+`/device/info` responses. Battery percentage is optional uint32 field 13 in
+DeviceInfo.Info. The Swift decoder was checked against a captured response as
+well as missing, zero, out-of-range, duplicate and wrong-wire-type fixtures.
+Only battery percentage and its read time are persisted, not the response's
+Bluetooth address or other identifiers. A failed read retains the old timestamp;
+an absent field stays unavailable rather than becoming a false zero.
