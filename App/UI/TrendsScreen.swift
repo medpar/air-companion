@@ -96,6 +96,14 @@ private struct MetricTrendView: View {
                     Text("min night to night").font(.subheadline).foregroundStyle(Tone.ink2)
                 }.padding(.top, 6)
                 Text("Variation of your sleep midpoint over two weeks. Steadier timing supports your body clock.").font(.footnote).foregroundStyle(Tone.ink2).padding(.top, 6)
+                if let jetlag = FitnessMath.socialJetlag(points) {
+                    Divider().padding(.vertical, 12)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(Format.clock(hours: jetlag)).font(.figure(28)).monospacedDigit()
+                        Text("social jetlag").font(.subheadline).foregroundStyle(Tone.ink2)
+                    }
+                    Text("Gap between your weekend and weekday sleep midpoints (Wittmann et al., 2006). Smaller is gentler on your body clock.").font(.caption).foregroundStyle(Tone.ink3).padding(.top, 6)
+                }
             }
         }
         if let signal {
@@ -246,6 +254,7 @@ private struct TrainingTrendView: View {
                 Text("Rate how hard each session felt (0–10). Load = effort × minutes feeds a fitness–fatigue model.").font(.subheadline).foregroundStyle(Tone.ink2).padding(.top, 8)
             }
         }
+        WorkloadCard()
         WeeklyLoadCard()
         CardioCard()
         Card(padding: 6) {
@@ -300,6 +309,39 @@ private struct WeeklyLoadCard: View {
     }
 }
 
+/// Acute:chronic workload ratio and weekly ramp.
+private struct WorkloadCard: View {
+    @EnvironmentObject private var library: AppStore
+    var body: some View {
+        let ratio = FitnessMath.workloadRatio(library.data.workouts)
+        if let value = ratio.ratio {
+            let balanced = value >= 0.8 && value <= 1.3
+            Card {
+                HStack(alignment: .firstTextBaseline) {
+                    Eyebrow("Workload ratio")
+                    Spacer()
+                    Text(ratio.zone).font(.caption.weight(.semibold)).padding(.horizontal, 8).frame(height: 24)
+                        .foregroundStyle(balanced ? Tone.moss : Tone.signal)
+                        .background((balanced ? Tone.mossSoft : Tone.signal.opacity(0.12)), in: Capsule())
+                }
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(value.formatted(.number.precision(.fractionLength(2)))).font(.figure(44)).monospacedDigit()
+                    Text("acute ÷ chronic").font(.subheadline).foregroundStyle(Tone.ink2)
+                    Spacer()
+                    if let ramp = FitnessMath.weeklyRamp(library.data.workouts) {
+                        VStack(alignment: .trailing, spacing: 1) {
+                            Text(Format.signed(ramp) + "%").font(.figure(20)).monospacedDigit().foregroundStyle(abs(ramp) > 50 ? Tone.signal : Tone.ink)
+                            Text("week ramp").font(.caption2).foregroundStyle(Tone.ink3)
+                        }
+                    }
+                }.padding(.top, 4)
+                RangeBar(low: 0.8, high: 1.3, value: value, outside: !balanced).padding(.top, 10)
+                Text("7-day load against your 28-day average (Williams et al., 2017). The 0.8–1.3 band is the common “sweet spot”; the ratio is debated, so treat it as context.").font(.caption).foregroundStyle(Tone.ink3).padding(.top, 10)
+            }
+        }
+    }
+}
+
 /// Heart-rate-ratio fitness estimate and training zones from age and resting HR.
 struct CardioCard: View {
     @EnvironmentObject private var library: AppStore
@@ -312,8 +354,15 @@ struct CardioCard: View {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text("≈ \(Int(vo2.rounded()))").font(.figure(40)).monospacedDigit()
                     Text("ml/kg/min VO₂max").font(.subheadline).foregroundStyle(Tone.ink2)
+                    Spacer()
+                    if let age = library.data.profile.age, let category = FitnessMath.cardioCategory(vo2: vo2, age: age, sex: library.data.profile.sex) {
+                        VStack(alignment: .trailing, spacing: 1) {
+                            Text(category.label).font(.subheadline.weight(.semibold)).foregroundStyle(Tone.moss)
+                            Text("~\(category.percentile)th pct").font(.caption2).foregroundStyle(Tone.ink3)
+                        }
+                    }
                 }.padding(.top, 6)
-                Text("Estimated from max \(Int(maximum)) and resting \(Int(resting.rounded())) bpm. Expect ±10–15% error.").font(.caption).foregroundStyle(Tone.ink3)
+                Text(library.data.profile.sex == .unspecified ? "Estimated from max \(Int(maximum)) and resting \(Int(resting.rounded())) bpm. Add your sex in Profile for an age-matched percentile." : "Estimated from max \(Int(maximum)) and resting \(Int(resting.rounded())) bpm, ranked against age and sex norms. Expect ±10–15% error.").font(.caption).foregroundStyle(Tone.ink3)
                 let floors = FitnessMath.zoneFloors(maximum: maximum, resting: resting)
                 VStack(spacing: 6) {
                     ForEach(Array(floors.enumerated()), id: \.offset) { index, floor in

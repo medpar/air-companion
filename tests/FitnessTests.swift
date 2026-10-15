@@ -109,6 +109,51 @@ import Foundation
 
         let legacy = try JSONDecoder().decode(AlertSettings.self, from: Data("{\"keepAlive\":true}".utf8))
         precondition(legacy.keepAlive && legacy.goal.enabled && legacy.milestoneStep == 2500)
-        print("PASS: DST windows, personal ranges, sleep timing, training model, heart-rate formulas, alert deduplication and adaptive checks")
+
+        // Advanced training load: EWMA ACWR and weekly ramp.
+        func session(_ dayOffset: Int, _ load: Int) -> WorkoutEntry {
+            WorkoutEntry(id: UUID(), date: calendar.date(byAdding: .day, value: -dayOffset, to: now)!, activity: "Run", minutes: Double(load), effort: 1, note: "", source: "t")
+        }
+        let steady = (1...40).map { session($0, 50) }
+        let balanced = FitnessMath.workloadRatio(steady, now: now, calendar: calendar)
+        precondition(balanced.ratio != nil && abs(balanced.ratio! - 1) < 0.15 && balanced.zone == "balanced")
+        let spike = FitnessMath.workloadRatio(steady + [session(0, 600), session(0, 600)], now: now, calendar: calendar)
+        precondition((spike.ratio ?? 0) > 1.5 && spike.zone == "spike")
+        precondition(FitnessMath.workloadRatio([session(1, 50)], now: now, calendar: calendar).ratio == nil)
+        let thisWeekStart = calendar.dateInterval(of: .weekOfYear, for: now)!.start
+        let thisWeekDay = calendar.date(byAdding: .hour, value: 1, to: thisWeekStart)!
+        let lastWeekDay = calendar.date(byAdding: .day, value: -6, to: thisWeekStart)!
+        let ramp = FitnessMath.weeklyRamp([WorkoutEntry(id: UUID(), date: lastWeekDay, activity: "Run", minutes: 100, effort: 1, note: "", source: "t"),
+                                           WorkoutEntry(id: UUID(), date: thisWeekDay, activity: "Run", minutes: 200, effort: 1, note: "", source: "t")], now: now, calendar: calendar)
+        precondition(ramp == 100)
+
+        // HRV coefficient of variation.
+        let flatHRV = (0..<7).map { DailyMetric(kind: .hrvSDNN, date: calendar.date(byAdding: .day, value: -$0, to: now)!, value: 50, sourceID: "s", sourceName: "s") }
+        precondition(FitnessMath.coefficientOfVariation([50, 50, 50]) == 0 && FitnessMath.hrvVariation(flatHRV, now: now, calendar: calendar) == 0)
+
+        // Social jetlag: weekend midpoints 2 h later than weekdays.
+        var midpoints: [DailyMetric] = []
+        for offset in 1...21 {
+            let day = calendar.date(byAdding: .day, value: -offset, to: now)!
+            midpoints.append(DailyMetric(kind: .sleepMidpoint, date: day, value: calendar.isDateInWeekend(day) ? 5 : 3, sourceID: "s", sourceName: "s"))
+        }
+        let jetlag = FitnessMath.socialJetlag(midpoints, now: now, calendar: calendar)
+        precondition(jetlag != nil && abs(jetlag! - 2) < 0.001)
+
+        // VO2max norms.
+        precondition(FitnessMath.cardioCategory(vo2: 55, age: 35, sex: .male)?.label == "Excellent")
+        precondition(FitnessMath.cardioCategory(vo2: 20, age: 35, sex: .male)?.label == "Very low")
+        precondition(FitnessMath.cardioCategory(vo2: 45, age: 35, sex: .unspecified) == nil)
+
+        // Readiness composite: good HRV + sleep scores high; weights rescale.
+        let goodHRV = BodySignal(kind: .hrvSDNN, recent: 60, low: 45, high: 55, recentDays: 7, baselineDays: 60)
+        let lowRHR = BodySignal(kind: .restingPulse, recent: 52, low: 54, high: 60, recentDays: 7, baselineDays: 60)
+        let ready = FitnessMath.readiness(.init(hrv: goodHRV, rhr: lowRHR, sleepHours: 8, sleepNeed: 8, regularityMinutes: 20))!
+        precondition(ready.score > 70 && ready.band == "High" && ready.components.count == 4)
+        let poor = FitnessMath.readiness(.init(hrv: BodySignal(kind: .hrvSDNN, recent: 30, low: 45, high: 55, recentDays: 7, baselineDays: 60), rhr: nil, sleepHours: 4, sleepNeed: 8, regularityMinutes: nil))!
+        precondition(poor.score < 34 && poor.band == "Low")
+        precondition(FitnessMath.readiness(.init(hrv: nil, rhr: nil, sleepHours: 7, sleepNeed: 8, regularityMinutes: 10)) == nil)
+
+        print("PASS: DST windows, personal ranges, sleep timing, training model, heart-rate formulas, alert dedup, ACWR, HRV CV, social jetlag, VO2max norms and readiness")
     }
 }

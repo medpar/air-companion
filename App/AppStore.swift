@@ -1,9 +1,19 @@
 import Foundation
 import Combine
 
+enum Sex: String, Codable, CaseIterable, Identifiable { case female, male, unspecified; var id: String { rawValue } }
+
 struct Profile: Codable, Equatable {
     var age: Int?
     var maximumHeartRate: Int?
+    var sex: Sex = .unspecified
+    init() {}
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        age = try c.decodeIfPresent(Int.self, forKey: .age)
+        maximumHeartRate = try c.decodeIfPresent(Int.self, forKey: .maximumHeartRate)
+        sex = try c.decodeIfPresent(Sex.self, forKey: .sex) ?? .unspecified
+    }
 }
 
 struct SavedData: Codable {
@@ -113,7 +123,7 @@ final class AppStore: ObservableObject {
         }
         data.alerts.milestone.enabled = true
         data.alerts.call.enabled = true
-        data.profile.age = 34
+        data.profile.age = 34; data.profile.sex = .male
         data.healthReadAt = now
         return data
     }

@@ -77,6 +77,15 @@ struct PebbleApp: App {
             DispatchQueue.main.asyncAfter(deadline: .now() + 60) { band.readActivity() }
             return
         }
+        if operation == "call-check" {
+            // Keep-alive and the call alert for this process only; a CallKit
+            // test call rings after the given delay (default 45 s) for 25 s.
+            services.keepAlive.start()
+            services.alerts.diagnosticCalls = true
+            band.enableDiagnosticCapture()
+            TestCall.shared.ring(after: argument.flatMap(Double.init) ?? 45, for: 25)
+            return
+        }
         if operation == "pattern", let pattern = argument.flatMap(BuzzPattern.init(rawValue:)) {
             band.enableDiagnosticCapture(); band.vibrate(pattern); return
         }

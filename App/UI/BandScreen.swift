@@ -333,9 +333,12 @@ struct ProfileView: View {
         Form {
             Section {
                 Stepper(library.data.profile.age.map { "Age \($0)" } ?? "Age not set", value: Binding(get: { library.data.profile.age ?? 35 }, set: { v in library.change { $0.profile.age = v } }), in: 14...100)
+                Picker("Sex", selection: Binding(get: { library.data.profile.sex }, set: { v in library.change { $0.profile.sex = v } })) {
+                    Text("Not set").tag(Sex.unspecified); Text("Female").tag(Sex.female); Text("Male").tag(Sex.male)
+                }
                 Stepper(library.data.profile.maximumHeartRate.map { "Max heart rate \($0)" } ?? "Max heart rate: estimated", value: Binding(get: { library.data.profile.maximumHeartRate ?? Int(FitnessMath.maximumHeartRate(age: library.data.profile.age ?? 35)) }, set: { v in library.change { $0.profile.maximumHeartRate = v } }), in: 120...220)
                 if library.data.profile.maximumHeartRate != nil { Button("Use estimate") { library.change { $0.profile.maximumHeartRate = nil } } }
-            } footer: { Text("Max heart rate is estimated as 208 − 0.7 × age (Tanaka et al., 2001) unless you set a measured value. Used for zones and the VO₂max estimate.") }
+            } footer: { Text("Max heart rate is estimated as 208 − 0.7 × age (Tanaka et al., 2001) unless you set a measured value. Age and sex rank your VO₂max against population norms; sex is used only for that.") }
         }
         .surfaceRows()
         .navigationTitle("Profile").navigationBarTitleDisplayMode(.inline)

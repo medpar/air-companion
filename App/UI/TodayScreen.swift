@@ -18,6 +18,7 @@ struct TodayScreen: View {
                     if !band.keysReady && !library.preview { KeyNeededCard() }
                     StepsCard(editingGoal: $editingGoal)
                     HStack(spacing: 12) { HeartTile(); BatteryTile() }
+                    ReadinessCard(methods: $methods)
                     SignalsCard(methods: $methods)
                     TrainingCard(sessionOpen: $sessionOpen, logging: $logging)
                     NextAlarmCard()

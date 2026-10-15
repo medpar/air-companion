@@ -14,6 +14,8 @@ final class AlertCenter: NSObject, ObservableObject, CXCallObserverDelegate, UNU
     @Published private(set) var nextCheck: Date?
     @Published private(set) var lastCheck: Date?
     @Published private(set) var delivering = false
+    /// USB acceptance only: treat calls as enabled for this process.
+    var diagnosticCalls = false
     private let calls = CXCallObserver()
     private weak var library: AppStore?
     private weak var band: BandConnection?
@@ -93,7 +95,7 @@ final class AlertCenter: NSObject, ObservableObject, CXCallObserverDelegate, UNU
 
     func callObserver(_ callObserver: CXCallObserver, callChanged call: CXCall) {
         guard !call.isOutgoing, !call.hasConnected, !call.hasEnded,
-              let library, !library.preview, library.data.alerts.call.enabled,
+              let library, !library.preview, library.data.alerts.call.enabled || diagnosticCalls,
               band?.observingEvents != true, isForeground || canWorkInBackground else { return }
         let key = "call-\(call.uuid.uuidString)"
         guard !library.data.deliveredKeys.contains(key) else { return }
@@ -116,7 +118,8 @@ final class AlertCenter: NSObject, ObservableObject, CXCallObserverDelegate, UNU
 
     private func deliver(_ item: DueAlert, steps: Int? = nil, callID: UUID? = nil) {
         guard let library else { return }
-        let rule = library.data.alerts.rule(item.event)
+        var rule = library.data.alerts.rule(item.event)
+        if item.event == .call && diagnosticCalls { rule.enabled = true }
         let receipts = item.settles.map { AlertReceipt(date: Date(), event: item.event, key: $0, outcome: "Pending") }
         // Journal first: an interrupted delivery is never replayed.
         guard library.change({ $0.alertReceipts.append(contentsOf: receipts) }) else { return }
