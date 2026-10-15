@@ -16,11 +16,14 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
     @Published var lastRead: Date?
     @Published var haptic: HapticSetting?
     @Published var notificationAccess = false
+    @Published private(set) var systemSharingReady = false
     @Published private(set) var preview = false
     private var realSnapshot: Snapshot?
     private struct Snapshot: Codable { let alarms: AlarmList?; let activity: ActivityReading?; let lastRead: Date?; var deviceInfo: BandDeviceInfo? = nil }
     private struct Journal: Codable { let date: Date; let before: AlarmList; let change: AlarmChange }
-    private enum Purpose { case refresh, observe, primePulse, change(AlarmChange), haptic(HapticSetting, UInt64), pulse(Int) }
+    private enum Purpose { case refresh, observe, systemSharing, primePulse, change(AlarmChange), haptic(HapticSetting, UInt64), pulse(Int) }
+    private var pendingSharingProbe = false
+    private var authenticatedPeripheralID: UUID?
     private var observedEventCount = 0
     private enum Phase { case alarms, capabilities, deviceInfo, activity, writing, verifying, creationFinalizing, haptic, hapticWriting, hapticVerifying, pulseChanged, pulseProbe, pulseRestoring, pulseVerified }
     private var correctedCreation = false
@@ -67,6 +70,7 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
         switch operation {
         case "refresh": start()
         case "events": begin(.observe)
+        case "ancs": pendingSharingProbe = true; begin(.refresh)
         case "vibration":
             let groups = alarmID.flatMap { (1...3).contains($0) ? Int($0) : nil } ?? 1
             testVibration(groups: groups)
@@ -189,11 +193,14 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
         session = UUID()
         completedPulseGroups = 0; recoveringPulse = pendingPulse != nil; pulseSucceeded = false; pulseReady = false
         purpose = requested; phase = .alarms; beforeWrite = nil; writeSent = false; writeVerified = false; correctedCreation = false
-        active = true; didRead = false; hasStarted = false; sent = 0; received = 0; events = []; fragments = []; outgoing = []; observedEventCount = 0
+        active = true; didRead = false; hasStarted = false; sent = 0; received = 0; events = []; fragments = []; outgoing = []; observedEventCount = 0; systemSharingReady = false
         status = "Finding your Air"; detail = "Keep your band close to your iPhone."
         record("begin")
         let observing: Bool = { if case .observe = requested { return true }; return false }()
-        timeout = Timer(timeInterval: observing ? 120 : 35, repeats: false) { [weak self] _ in self?.finish(observing ? "Observation ended" : "Connection timed out", "Connection closed. Your band keeps tracking.") }
+        let sharing: Bool = { if case .systemSharing = requested { return true }; return false }()
+        timeout = Timer(timeInterval: observing ? 120 : 35, repeats: false) { [weak self] _ in
+            self?.finish(observing ? "Observation ended" : sharing ? "System sharing check ended" : "Connection timed out", "Connection closed. Your band keeps tracking.")
+        }
         if let timeout { RunLoop.main.add(timeout, forMode: .common) }
         progressTimer = Timer(timeInterval: 5, repeats: true) { [weak self] _ in self?.record("progress") }
         if let progressTimer { RunLoop.main.add(progressTimer, forMode: .common) }
@@ -214,6 +221,13 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
             else if central.state == .poweredOff { finish("Bluetooth is off", "Switch it on in iPhone Settings, then try again.") }
             return
         }
+        if case .systemSharing = purpose {
+            guard let authenticatedPeripheralID,
+                  let verified = central.retrievePeripherals(withIdentifiers: [authenticatedPeripheralID]).first else {
+                finish("Verified Air unavailable", "Refresh before checking system sharing."); return
+            }
+            connect(verified); return
+        }
         let known = central.retrieveConnectedPeripherals(withServices: [service, legacy])
         if known.count == 1 { connect(known[0]) }
         else if known.count > 1 { finish("More than one band found", "Move other Fitbit devices away before trying again.") }
@@ -223,7 +237,10 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
         guard active, band == nil else { return }
         central.stopScan(); band = peripheral; peripheral.delegate = self
         status = "Connecting"; record("connecting")
-        central.connect(peripheral, options: nil)
+        if case .systemSharing = purpose {
+            record("ancs_requested")
+            central.connect(peripheral, options: [CBConnectPeripheralOptionRequiresANCS: true])
+        } else { central.connect(peripheral, options: nil) }
     }
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String: Any], rssi RSSI: NSNumber) {
         guard let name = (advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? peripheral.name,
@@ -234,7 +251,25 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
         guard active, band === peripheral else { central.cancelPeripheralConnection(peripheral); return }
         notificationAccess = peripheral.ancsAuthorized
         record("connected"); record("ancs_authorized", value: String(notificationAccess))
+        if case .systemSharing = purpose {
+            // This phase makes no GATT application writes or DTLS connection.
+            // iOS and the existing paired accessory own the ANCS protocol.
+            status = notificationAccess ? "System sharing authorized" : "Waiting for system sharing"
+            detail = "Checking the existing paired Air. No vibration command is sent by this app."
+            systemSharingReady = notificationAccess
+            record("ancs_probe_no_application_writes")
+            return
+        }
         peripheral.discoverServices([service, legacy])
+    }
+    func centralManager(_ central: CBCentralManager, didUpdateANCSAuthorizationFor peripheral: CBPeripheral) {
+        guard active, band === peripheral else { return }
+        notificationAccess = peripheral.ancsAuthorized
+        record("ancs_authorization_updated", value: String(notificationAccess))
+        if case .systemSharing = purpose {
+            systemSharingReady = notificationAccess
+            status = notificationAccess ? "System sharing authorized" : "System sharing not authorized"
+        }
     }
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
         if closing === peripheral { closing = nil; return }
@@ -342,6 +377,7 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
         guard air_transport_work(transport, &delay) == 0 else { finish("Band transport stopped", "No settings were changed."); return }
         let state = air_transport_state(transport)
         if state == 2 && !didRead {
+            authenticatedPeripheralID = band?.identifier
             didRead = true; status = "Reading alarms"; record("authenticated")
             var resource: UInt32 = 0
             if pendingPulse != nil { phase = .pulseProbe; status = "Checking vibration recovery"; beginPulseWindow(); resource = 3 }
@@ -563,6 +599,7 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(name)
     }
     private func finish(_ title: String, _ subtitle: String) {
+        systemSharingReady = false
         pulseReady = false
         active = false; progressTimer?.invalidate(); progressTimer = nil; pump?.invalidate(); pump = nil; timeout?.invalidate(); timeout = nil
         pulseTimer?.invalidate(); pulseTimer = nil
@@ -585,6 +622,16 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
         callback?(pulseSucceeded)
         let readyCallback = primeCompletion; primeCompletion = nil
         readyCallback?(false)
+        if pendingSharingProbe {
+            pendingSharingProbe = false
+            guard authenticatedPeripheralID != nil, title == "Up to date" || title == "Alarms refreshed" else { return }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                for _ in 0..<20 where !self.canStart { try? await Task.sleep(nanoseconds: 100_000_000) }
+                guard self.canStart, UIApplication.shared.applicationState != .background else { return }
+                self.begin(.systemSharing)
+            }
+        }
     }
     private func record(_ event: String, value: String = "") {
         events.append(["event": event, "value": value, "time": ISO8601DateFormatter().string(from: Date())])

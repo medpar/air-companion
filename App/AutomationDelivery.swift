@@ -31,9 +31,13 @@ final class AutomationDelivery: NSObject, ObservableObject, UNUserNotificationCe
     }
     override init() { super.init(); UNUserNotificationCenter.current().delegate = self }
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        completionHandler([.banner, .sound])
+        completionHandler([.banner, .list, .sound])
         let identifier = notification.request.identifier
         DispatchQueue.main.async { [weak self] in
+            if identifier.hasPrefix("air-system-test-") {
+                self?.recordSystemTest("notification_received_no_app_vibration")
+                return
+            }
             guard let self, self.testIdentifier == identifier, !self.testDelivered else { return }
             self.testDelivered = true
             self.recordTest("notification_received")
@@ -45,6 +49,31 @@ final class AutomationDelivery: NSObject, ObservableObject, UNUserNotificationCe
                 guard let self, self.testIdentifier == identifier else { return }
                 self.finishTest(success ? "\(groups) vibration groups complete · original intensity restored" : "Test vibration incomplete · check My Air")
             }
+        }
+    }
+    func sendSystemProbeNotification() {
+        guard band?.systemSharingReady == true, library?.preview == false else { return }
+        Task { @MainActor in
+            let center = UNUserNotificationCenter.current()
+            let settings = await center.notificationSettings()
+            guard settings.authorizationStatus == .authorized, band?.systemSharingReady == true else {
+                recordSystemTest("notification_permission_unavailable"); return
+            }
+            let content = UNMutableNotificationContent()
+            content.title = "System sharing test"
+            content.body = "Testing iOS notification sharing with your Air."
+            content.sound = .default
+            do {
+                try await center.add(UNNotificationRequest(identifier: "air-system-test-\(UUID().uuidString)", content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: 2, repeats: false)))
+                recordSystemTest("notification_scheduled_no_app_vibration")
+            } catch { recordSystemTest("notification_schedule_failed") }
+        }
+    }
+    private func recordSystemTest(_ event: String) {
+        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("system-notification-report.json")
+        let record = ["event": event, "time": ISO8601DateFormatter().string(from: Date())]
+        if let data = try? JSONSerialization.data(withJSONObject: record) {
+            try? data.write(to: url, options: [.atomic, .completeFileProtection])
         }
     }
     func sendTestNotification(groups: Int = 3) {

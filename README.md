@@ -13,14 +13,14 @@ Google Health.** No firmware changes, unpairing or device resets.
 | Add, edit, repeat, delete alarms | Fresh-state conflict check, protected backup, read-back verification; corrects the Air's initially enabled creation | Physical create/edit/recurrence/disable/delete verified; original two alarms restored |
 | Band vibration intensity | Advertised options only; preserves unknown fields and verifies changes | Air advertised Off/Low/High; Low → High → Low verified |
 | Steps and current heart rate | Explicit refresh, timestamped snapshots, confidence filter, daily history | Physical reads succeeded |
-| Battery | Read-only device-info request, timestamped local snapshot | Decoder verified against an authenticated official-app capture; new app refresh still needs physical acceptance |
+| Battery | Read-only device-info request, timestamped local snapshot | Decoder verified against official-app capture; physical refresh/read/storage verified; UI checked in simulator |
 | Apple Health trends | Read-only import, per-device/source selection, daily sleep/RHR/SDNN values, 7-day vs 28-day comparison | Builds; aggregation logic tested; real import permission/data pending |
 | Workouts | Session timer with relaunch recovery, manual logs, Health imports, effort ratings, session-RPE load | Offline logic and persistence tested |
 | Daily step notification | iPhone alert or band vibration after a refresh; once per rule/day | Band delivery verified using an isolated test library; iPhone banner permission/delivery pending |
 | Incoming calls on band | CallKit observer while app is foreground; refresh first | Owner confirmed vibration on a real incoming call; original intensity restored; no locked/background delivery |
 | Test notification | Connects first, schedules an Air Companion notification, then sends one to three groups on delivery | iOS delivery observed; first command within the same second; all three groups and original-intensity restoration verified |
 | Vibration patterns | One to three intensity-feedback groups, restore after each, durable recovery journal | Owner felt short vibration; one/two-group exchanges verified |
-| Other apps' notifications / LED events | Saved drafts; no guessed commands | No supported iOS forwarding/LED route established |
+| Other apps' notifications / LED events | Saved drafts; no guessed commands | System sharing permission granted, but system-only notification produced no vibration; no forwarding/LED route established |
 | Double-tap → phone action | Saved gesture/shortcut drafts | No verified exported gesture event |
 
 A bounded diagnostic observer can inspect the known inbound event routes without

@@ -93,16 +93,51 @@ app control cannot bypass its passcode.
   a local notification two seconds later. The matching foreground delivery
   callback requests three groups; the test stops on background or after 60
   seconds. Metadata is in `Documents/notification-test-report.json`.
+- `--diagnostic-ancs`: read/authenticate normally, then reconnect only the same
+  authenticated peripheral with Apple's `CBConnectPeripheralOptionRequiresANCS`.
+  The second phase sends no application GATT writes or DTLS messages and ends
+  after 35 seconds. Once iOS reports sharing authorization, schedule a local
+  banner/list/sound notification whose callback explicitly bypasses app-controlled
+  vibration. This diagnostic uses a separate library; permission is not proof
+  that the accessory subscribes to or acts on notifications.
 
 The one-hour call build was installed and launched on 2026-10-15 at 10:44 UTC;
 authenticated refresh completed. The owner subsequently confirmed the call and
 switched further testing to app-generated notifications. Battery integration and
 stricter event observation were developed without disturbing the call window. Battery
-parsing matches an existing authenticated capture; its new refresh/UI path has
-simulator and synthetic protocol coverage, not yet a new physical app read.
+parsing matches an existing authenticated capture. The subsequent ANCS probe's
+baseline refresh also persisted a valid battery percentage and read timestamp
+from the physical Air, verifying the new read/storage path; the UI was separately
+checked with simulator preview data.
 
 Read the protected metadata report at `Documents/connection-report.json` using
 `devicectl device copy from` with the app data-container domain. A successful
 launch is not acceptance. Capture mode also stores encrypted GATT fragments;
 keep that file, snapshots and all identifiers out of Git. Relaunch normally to
 return to the owner's normal library and stop the acceptance mode.
+
+## System notification sharing — 2026-10-15
+
+The first bounded probe requested ANCS through Apple's CoreBluetooth connection
+option. iOS changed `ancsAuthorized` to true at 11:09:30 UTC; the local system-only
+notification reached the app at 11:09:32 UTC. The owner reported **no vibration**.
+The second probe retained authorization, delivered its notification at 11:13:17
+UTC, and sent/received zero app transport fragments during the sharing phase.
+It ended at 11:13:49 UTC. The initial diagnostic called this "Connection timed
+out"; the status is now "System sharing check ended" because the connection had
+succeeded and the observation duration had elapsed.
+
+A private PacketLogger trace covered the baseline and most of the second probe,
+until its USB logger connection was lost at 13:13:37 local time. Its 50 Air ATT
+packets consist of the normal client discovery, CCCD write and encrypted app
+transport traffic; no Air-to-phone ATT discovery/subscription requests or
+phone-to-Air ANCS notification was observed. The CLI text conversion rendered
+times two hours later than PacketLogger's UI; app metadata uses UTC. No exact
+cross-tool latency is inferred. This bounded negative observation does not prove
+that every firmware configuration lacks ANCS, but it provides no working direct
+forwarding route. The trace contains private Bluetooth data and is not published.
+
+The existing app-controlled notification test remains separate: it establishes
+its encrypted connection before the notification and explicitly requests haptic
+feedback groups on the matching foreground callback. It cannot intercept other
+apps' notifications or establish locked/background delivery.

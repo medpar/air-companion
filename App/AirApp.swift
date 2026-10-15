@@ -9,12 +9,14 @@ struct AirApp: App {
     @StateObject private var delivery = AutomationDelivery()
     @Environment(\.scenePhase) private var scene
     @State private var diagnosticKeepAwake = false
+    @State private var systemProbeNotificationSent = false
     init() {
         let arguments = ProcessInfo.processInfo.arguments
         let directory = ProcessInfo.processInfo.arguments.contains("--diagnostic-step-goal")
             ? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("acceptance-library")
             : arguments.contains("--diagnostic-call") ? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("acceptance-call-library")
-            : arguments.contains("--diagnostic-notification") ? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("acceptance-notification-library") : nil
+            : arguments.contains("--diagnostic-notification") ? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("acceptance-notification-library")
+            : arguments.contains("--diagnostic-ancs") ? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("acceptance-system-library") : nil
         _library = StateObject(wrappedValue: AppStore(directory: directory))
     }
     var body: some Scene {
@@ -23,16 +25,19 @@ struct AirApp: App {
                 .environmentObject(library).environmentObject(health).environmentObject(delivery)
                 .onAppear {
                     delivery.bind(library: library, band: band)
-                    if ProcessInfo.processInfo.arguments.contains("--diagnostic-call") || ProcessInfo.processInfo.arguments.contains("--diagnostic-notification") {
+                    if ProcessInfo.processInfo.arguments.contains("--diagnostic-call") || ProcessInfo.processInfo.arguments.contains("--diagnostic-notification") || ProcessInfo.processInfo.arguments.contains("--diagnostic-ancs") {
                         diagnosticKeepAwake = true
                         UIApplication.shared.isIdleTimerDisabled = true
-                        let duration: TimeInterval = ProcessInfo.processInfo.arguments.contains("--diagnostic-call") ? 3600 : 60
+                        let duration: TimeInterval = ProcessInfo.processInfo.arguments.contains("--diagnostic-call") ? 3600 : 90
                         Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { _ in
                             diagnosticKeepAwake = false
                             UIApplication.shared.isIdleTimerDisabled = band.active
                         }
                     }
                     if ProcessInfo.processInfo.arguments.contains("--preview") { library.setPreview(true); band.setPreview(true) }
+                    else if ProcessInfo.processInfo.arguments.contains("--diagnostic-ancs") {
+                        band.runDiagnostic("ancs", alarmID: nil)
+                    }
                     else if ProcessInfo.processInfo.arguments.contains("--diagnostic-notification") {
                         band.enableDiagnosticCapture()
                         delivery.sendTestNotification()
@@ -70,6 +75,11 @@ struct AirApp: App {
                 }
                 .onChange(of: delivery.testingNotification) { _, testing in
                     UIApplication.shared.isIdleTimerDisabled = testing || band.active || diagnosticKeepAwake
+                }
+                .onChange(of: band.systemSharingReady) { _, ready in
+                    guard ready, !systemProbeNotificationSent, ProcessInfo.processInfo.arguments.contains("--diagnostic-ancs") else { return }
+                    systemProbeNotificationSent = true
+                    delivery.sendSystemProbeNotification()
                 }
                 .onChange(of: band.activityUpdateID) { _, _ in
                     guard let reading = band.activity, !library.preview else { return }
@@ -109,6 +119,8 @@ struct AirView: View {
                 Text("Call acceptance · temporary rule").font(.caption).frame(maxWidth: .infinity).padding(8).background(.yellow.opacity(0.16))
             } else if ProcessInfo.processInfo.arguments.contains("--diagnostic-notification") {
                 Text("Notification test · temporary history").font(.caption).frame(maxWidth: .infinity).padding(8).background(.yellow.opacity(0.16))
+            } else if ProcessInfo.processInfo.arguments.contains("--diagnostic-ancs") {
+                Text("System sharing check · no app vibration").font(.caption).frame(maxWidth: .infinity).padding(8).background(.yellow.opacity(0.16))
             }
             if library.preview {
                 HStack {
@@ -378,7 +390,7 @@ private struct BandView: View {
                     }.disabled(!band.canStart || library.preview || delivery.testingNotification)
                     if let message = delivery.message { Text(message).font(.footnote).foregroundStyle(.secondary) }
                     Text("Connects first, then sends an Air Companion notification and vibrates when it arrives. Keep this app open for the test.").font(.footnote).foregroundStyle(.secondary)
-                    LabeledContent("System sharing", value: band.notificationAccess ? "Authorized" : "Not authorized")
+                    LabeledContent("System sharing permission", value: band.notificationAccess ? "Authorized" : "Not confirmed")
                     Text("Incoming-call rules can vibrate while Air Companion is open. Locked/background calls and other apps’ notifications need a supported system route and are not forwarded.").font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("Status light") {
