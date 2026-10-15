@@ -105,7 +105,7 @@ import Foundation
         precondition(soon >= 300 && soon < 600)
         let idle = AlertEngine.nextCheck(settings: settings, goal: 10000, samples: samples, now: now, calendar: calendar)
         precondition(idle == 1800)
-        precondition(BuzzPattern.urgent.groups == 4 && BuzzPattern.longGap.beats == [0, 2.8])
+        precondition(BuzzPattern.urgent.pulses == 5 && BuzzPattern.longGap.beats == [0, 4.4] && BuzzPattern.single.beats == [0])
 
         let legacy = try JSONDecoder().decode(AlertSettings.self, from: Data("{\"keepAlive\":true}".utf8))
         precondition(legacy.keepAlive && legacy.goal.enabled && legacy.milestoneStep == 2500)

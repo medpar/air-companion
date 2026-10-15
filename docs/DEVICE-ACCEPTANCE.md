@@ -171,3 +171,26 @@ The existing app-controlled notification test remains separate: it establishes
 its encrypted connection before the notification and explicitly requests haptic
 feedback groups on the matching foreground callback. It cannot intercept other
 apps' notifications or establish locked/background delivery.
+
+## Pebble 1.1 — vibration, background and health (2026-10-15)
+
+- **Vibration patterns rebuilt.** The old flow read the setting back after every
+  toggle, so each pulse took ~4–5 s and all patterns felt alike. Each pulse is now
+  toggle → 0.3 s hold → restore with no read between, verifying once at the end
+  (round-trips per pulse halved). On the physical Air, Single ran in ~2 s and
+  Urgent produced five spaced pulses; the owner then counted Triple's three
+  buzzes, confirming count is perceptible with ~4 s spacing. Gaps were widened
+  (double/triple 1.8 s, long 3.4 s, urgent 0.9 s) because ~1.2 s spacing felt
+  identical — that is the Bluetooth round-trip floor, the reason sub-second
+  rhythm is impossible.
+- **Background call path added as a diagnostic.** `--diagnostic call-check [delay]`
+  starts keep-alive for that process and reports a CallKit test call so the
+  call → alert → band path can be exercised without a real caller. A background
+  run (app sent to Settings) connected, authenticated, read activity and closed
+  in the `background` state, with the process staying alive. A locked-phone call
+  was not completed in this session (device was locked remotely).
+- **Advanced health shipped.** Readiness, EWMA acute:chronic workload, HRV
+  coefficient of variation, social jetlag, sleep regularity and VO₂max norms,
+  all covered by the offline fitness tests.
+- **No unsafe writes.** LED colour, `sb/records` haptic patterns and
+  `DeviceCommands` were researched and deliberately not sent to the band.

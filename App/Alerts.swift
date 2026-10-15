@@ -2,19 +2,34 @@ import Foundation
 
 /// A pattern is a sequence of verified intensity-feedback groups separated by
 /// gaps. Timing is approximate: each group waits for band acknowledgements.
+/// A pattern is a count of pulses with a gap between them. Each pulse toggles the
+/// band's intensity to its alternate and straight back — the only verified way to
+/// make the Air vibrate. Fine sub-second rhythms aren't possible (every change is
+/// a Bluetooth round-trip), so patterns differ by pulse count and gap length.
 enum BuzzPattern: String, Codable, CaseIterable, Identifiable {
     case single, double, triple, longGap, urgent
     var id: String { rawValue }
-    var gaps: [TimeInterval] {
+    var pulses: Int {
         switch self {
-        case .single: return []
-        case .double: return [0.8]
-        case .triple: return [0.8, 0.8]
-        case .longGap: return [1.8]
-        case .urgent: return [0.45, 1.35, 0.45]
+        case .single: return 1
+        case .double, .longGap: return 2
+        case .triple: return 3
+        case .urgent: return 5
         }
     }
-    var groups: Int { gaps.count + 1 }
+    /// Seconds between the end of one pulse and the start of the next. Wide gaps
+    /// make the pulse count countable despite the ~1 s Bluetooth floor per buzz.
+    var gap: TimeInterval {
+        switch self {
+        case .single: return 0
+        case .double, .triple: return 1.8
+        case .longGap: return 3.4
+        case .urgent: return 0.9
+        }
+    }
+    /// Seconds the alternate intensity is held before restoring, shaping one pulse.
+    var holdSeconds: TimeInterval { self == .urgent ? 0.2 : 0.3 }
+    var groups: Int { pulses }
     var title: String {
         switch self {
         case .single: return "Single"
@@ -24,8 +39,11 @@ enum BuzzPattern: String, Codable, CaseIterable, Identifiable {
         case .urgent: return "Urgent"
         }
     }
-    /// Relative beat positions for drawing the pattern (0 = first group).
-    var beats: [TimeInterval] { gaps.reduce(into: [0]) { $0.append($0.last! + 1 + $1) } }
+    /// Relative beat positions for the glyph (one mark per pulse).
+    var beats: [TimeInterval] {
+        guard pulses > 1 else { return [0] }
+        return (0..<pulses).map { Double($0) * (1 + gap) }
+    }
 }
 
 enum AlertEvent: String, Codable, CaseIterable, Identifiable {

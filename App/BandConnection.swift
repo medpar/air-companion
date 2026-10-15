@@ -31,13 +31,12 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
     private var pendingSharingProbe = false
     private var authenticatedPeripheralID: UUID?
     private var observedEventCount = 0
-    private enum Phase { case alarms, capabilities, deviceInfo, activity, writing, verifying, creationFinalizing, haptic, hapticWriting, hapticVerifying, pulseChanged, pulseProbe, pulseRestoring, pulseVerified }
+    private enum Phase { case alarms, capabilities, deviceInfo, activity, writing, verifying, creationFinalizing, haptic, hapticWriting, hapticVerifying, pulseOn, pulseOff, pulseFinalVerify, pulseProbe, pulseRestoring, pulseVerified }
     private var correctedCreation = false
     private var pendingPulse: HapticPulseTransaction?
     private var pulseTimer: Timer?
     private var backgroundTask = UIBackgroundTaskIdentifier.invalid
     private var completedPulseGroups = 0
-    private var recoveringPulse = false
     private var pulseSucceeded = false
     private var pulseCompletion: ((Bool) -> Void)?
     private var primeCompletion: ((Bool) -> Void)?
@@ -224,7 +223,7 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
             catch { status = "Vibration backup unavailable"; detail = "Unlock your iPhone before retrying. The recovery backup has been preserved."; return }
         }
         session = UUID()
-        completedPulseGroups = 0; recoveringPulse = pendingPulse != nil; pulseSucceeded = false; pulseReady = false
+        completedPulseGroups = 0; pulseSucceeded = false; pulseReady = false
         purpose = requested; phase = .alarms; beforeWrite = nil; writeSent = false; writeVerified = false; correctedCreation = false
         active = true; didRead = false; hasStarted = false; sent = 0; received = 0; events = []; fragments = []; outgoing = []; observedEventCount = 0; systemSharingReady = false
         if case .observe = requested { observedEvents = [] }
@@ -491,7 +490,8 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
                 catch { finish("Couldn’t preserve vibration setting", "Nothing was changed."); return }
                 pendingPulse = transaction
                 beginPulseWindow()
-                sendPulseSetting(transaction.alternate, phase: .pulseChanged)
+                completedPulseGroups = 0
+                emitPulseOn()
             } else if case let .haptic(original, value) = purpose {
                 guard let fresh = haptic, fresh.configuration == original.configuration,
                       capabilities?.hapticIntensities.contains(value) == true,
@@ -530,15 +530,33 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
                 record("observer_ready"); return
             }
             finish(reading == nil ? "Alarms refreshed" : "Up to date", reading == nil ? "Activity wasn’t available. Any previous reading retains its timestamp." : "Connection closed. Your band keeps tracking.")
-        case .pulseChanged:
-            record("pulse_change_response", value: String(code))
-            // A failed/missing acknowledgement may still mean the write applied.
-            // Inspect before restoring; never replay the vibration itself.
-            let delay: TimeInterval = (64...95).contains(code) ? 0.8 : 0
-            pulseTimer = Timer(timeInterval: max(0.001, delay), repeats: false) { [weak self] _ in
-                self?.read(3, phase: .pulseProbe, title: "Checking vibration setting")
+        case .pulseOn:
+            // One pulse = switch to the alternate intensity (buzz), hold briefly,
+            // then switch straight back (buzz). No read between: a read per toggle
+            // is what made every pattern take so long they felt identical.
+            record("pulse_on", value: String(code))
+            guard case .pulse(let pattern) = purpose, let pendingPulse else { finish("Vibration recovery needed", "Refresh to inspect the saved setting."); return }
+            pulseTimer = Timer(timeInterval: pattern.holdSeconds, repeats: false) { [weak self] _ in
+                self?.sendPulseSetting(pendingPulse.original, phase: .pulseOff)
             }
             if let pulseTimer { RunLoop.main.add(pulseTimer, forMode: .common) }
+        case .pulseOff:
+            record("pulse_off", value: String(code))
+            guard case .pulse(let pattern) = purpose else { finish("Vibration recovery needed", "Refresh to inspect the saved setting."); return }
+            completedPulseGroups += 1
+            if completedPulseGroups < pattern.pulses {
+                pulseTimer = Timer(timeInterval: pattern.gap, repeats: false) { [weak self] _ in self?.emitPulseOn() }
+                if let pulseTimer { RunLoop.main.add(pulseTimer, forMode: .common) }
+            } else {
+                // Confirm the band is back on the original intensity exactly once.
+                read(3, phase: .pulseFinalVerify, title: "Checking vibration setting")
+            }
+        case .pulseFinalVerify:
+            guard code == 69, let current = try? HapticSetting(data: body), pendingPulse?.recovery(for: current) == .alreadyRestored else {
+                finish("Vibration recovery needed", "Refresh to inspect the saved setting."); return
+            }
+            pulseSucceeded = true
+            completePulse(current)
         case .pulseProbe:
             guard code == 69, let current = try? HapticSetting(data: body), let pendingPulse else {
                 finish("Vibration recovery needed", "Refresh to inspect the saved setting."); return
@@ -596,15 +614,20 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
             self?.finish("Vibration recovery needed", "Refresh to check and restore the saved setting.")
         }
     }
+    /// Begins one pulse of the active pattern by switching to the alternate intensity.
+    private func emitPulseOn() {
+        guard let pendingPulse else { finish("Vibration recovery needed", "Refresh to inspect the saved setting."); return }
+        sendPulseSetting(pendingPulse.alternate, phase: .pulseOn)
+    }
     private func sendPulseSetting(_ value: HapticSetting, phase: Phase) {
         guard let transport, let payload = try? value.response(changingTo: value.intensity) else {
             finish("Vibration recovery needed", "The original setting is backed up on this iPhone."); return
         }
         self.phase = phase
-        status = phase == .pulseChanged ? "Testing short vibration" : "Restoring vibration setting"
+        status = phase == .pulseOn || phase == .pulseOff ? "Buzzing your band" : "Restoring vibration setting"
         let result = payload.withUnsafeBytes { air_transport_set_haptics(transport, $0.bindMemory(to: UInt8.self).baseAddress, payload.count) }
         guard result == 0 else { finish("Vibration recovery needed", "Refresh to inspect the saved setting."); return }
-        record(phase == .pulseChanged ? "pulse_change_sent" : "pulse_restore_sent")
+        record(phase == .pulseOn ? "pulse_on_sent" : phase == .pulseOff ? "pulse_off_sent" : "pulse_restore_sent")
         work()
     }
     private func completePulse(_ value: HapticSetting) {
@@ -612,18 +635,6 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
         catch { finish("Recovery backup retained", "The original setting was verified, but the recovery file could not be cleared."); return }
         pendingPulse = nil; haptic = value
         record("pulse_original_verified")
-        if !recoveringPulse, case .pulse(let pattern) = purpose {
-            completedPulseGroups += 1
-            if completedPulseGroups < pattern.groups {
-                let gap = pattern.gaps[completedPulseGroups - 1]
-                pulseTimer = Timer(timeInterval: gap, repeats: false) { [weak self] _ in
-                    self?.read(3, phase: .haptic, title: "Preparing next vibration group")
-                }
-                if let pulseTimer { RunLoop.main.add(pulseTimer, forMode: .common) }
-                return
-            }
-            pulseSucceeded = true
-        }
         finish(pulseSucceeded ? "Vibration complete" : "Vibration setting restored", "Original intensity restored and read back from your Air.")
     }
     private func read(_ resource: UInt32, phase: Phase, title: String) {

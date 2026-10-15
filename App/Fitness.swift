@@ -1,5 +1,7 @@
 import Foundation
 
+enum Sex: String, Codable, CaseIterable, Identifiable { case female, male, unspecified; var id: String { rawValue } }
+
 enum MetricKind: String, Codable, CaseIterable, Identifiable {
     case steps, sleepHours, restingPulse, hrvSDNN, sleepMidpoint
     var id: String { rawValue }

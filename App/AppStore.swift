@@ -1,8 +1,6 @@
 import Foundation
 import Combine
 
-enum Sex: String, Codable, CaseIterable, Identifiable { case female, male, unspecified; var id: String { rawValue } }
-
 struct Profile: Codable, Equatable {
     var age: Int?
     var maximumHeartRate: Int?

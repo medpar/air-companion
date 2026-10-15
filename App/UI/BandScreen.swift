@@ -25,7 +25,7 @@ struct BandScreen: View {
                     }
                     NavigationLink { PatternsView() } label: { Label("Patterns", systemImage: "waveform") }
                 } header: { Text("Vibration") } footer: {
-                    Text("Patterns are short buzzes made by briefly switching intensity. Your setting is restored and checked after each one.")
+                    Text("The Air has no app-settable haptic patterns, so Pebble buzzes by briefly switching intensity and restoring it. Patterns differ by buzz count and spacing.")
                 }
 
                 Section {
@@ -269,7 +269,7 @@ struct PatternsView: View {
                             .accessibilityLabel("Try \(pattern.title)")
                     }
                 }
-            } footer: { Text("Each buzz takes about two seconds while Pebble switches intensity and confirms the original setting. Vibration must not be set to Off.") }
+            } footer: { Text("Each buzz is a brief intensity switch (~1 s over Bluetooth), so patterns differ by how many buzzes and the gaps between them, not fast rhythm. Vibration must not be set to Off.") }
         }
         .surfaceRows()
         .navigationTitle("Patterns")

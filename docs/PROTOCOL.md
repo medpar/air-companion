@@ -135,3 +135,36 @@ timing includes Bluetooth round trips.
 Event IDs are four ASCII characters packed big-endian (`rset` = 0x72736574).
 Unknown IDs are now reported as `?abcd`, or as hex when not printable, so a
 future tap or wrist event would be recognisable from the in-app listening screen.
+
+## Notifications, haptic patterns, LED and gestures — 2026-10-15 research
+
+Decompiled Google Health Android analysis (right-to-repair, read-only) clarified
+what the shared Fitbit protocol exposes versus what the Air actually supports:
+
+- **No app-addressable LED.** No RGB/backlight capability exists for any model.
+  The `color` field on a notification is a UI accent for screened devices. The
+  Air's light is firmware battery status (white ≥20%, red <20%) only.
+- **Firmware haptic patterns exist in the protocol but are not used here.** A
+  Switchboard `Record` (`POST sb/records`, mobile-data protocol `0x6001`) carries
+  `NotificationCommonExpression` with `hapticPattern` (field 10, uint32) and
+  `appColor` (field 2). This Air was never observed receiving `sb/records`, its
+  notification capability is unconfirmed, and `hapticPattern` values are
+  undocumented opaque integers. Sending it blind is a device risk, so Pebble
+  does **not** originate `sb/records`, `md/<proto>` `DeviceCommands`
+  (`code`+`payload`), or any other unobserved write.
+- **Vibration primitive.** The only verified way to make the Air buzz is a
+  `POST /settings` intensity change (Low↔High preview), restored and verified.
+  Each buzz is one Bluetooth round-trip (~1 s), so Pebble's patterns differ by
+  buzz count and gap, not sub-second rhythm. A pulse is toggle → 0.3 s hold →
+  restore, with no read between pulses and one read-back at the end. On the
+  physical Air, pulse counts are distinguishable with ~4 s spacing; ~1.2 s
+  spacing felt identical (it sits at the round-trip floor).
+- **No exported tap/gesture event.** The `Event` enum is fixed: `rset`, `bsnc`,
+  `cgps`, `ping`, `aofl`, `wrs+` (2003989291), `wrs-` (2003989293). Double-tap is
+  only an on-device alarm-dismissal method. `TapGestureOption` configures what a
+  tap does on the band and is not sent to the phone.
+- **Wrist on/off is the only candidate interaction event**, over `POST /events`
+  and `/eventsSecure` (the phone is the CoAP server; reply 2.04). This Air has so
+  far emitted only `rset`, so Pebble keeps a read-only event-listening screen
+  that surfaces any event code (including unknown ones as four-character codes),
+  ready to map to an action if the firmware ever emits one.

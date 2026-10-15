@@ -20,14 +20,15 @@ No firmware changes, no account, no cloud.
 | --- | --- | --- |
 | Alarms: add, edit, repeat, smart wake, delete | Fresh read, conflict check, protected backup, read-back verification | Yes (2026-10-15) |
 | Vibration intensity (Off/Low/High) | Advertised options only, verified read-back | Yes |
-| Vibration patterns: Single, Double, Triple, Long gap, Urgent | 1–4 intensity-feedback buzzes; setting restored and checked after each | Yes, all four Urgent buzzes felt by the owner |
+| Vibration patterns: Single, Double, Triple, Long gap, Urgent | 1–5 buzzes via intensity toggle, spaced so the count is feelable; restored and verified | Yes — owner counted Triple's 3 buzzes on the band |
 | Per-event alerts: calls, daily goal, step milestones, move reminder, Shortcuts | Each event has its own pattern, plus an optional iPhone notification or webhook | Goal buzz and foreground call buzz verified earlier; new engine covered by tests |
 | Background alerts | Opt-in **Keep Pebble running** (silent mixable audio session) plus adaptive step checks; iOS background refresh when off | Background band read verified; a locked-phone call not yet tested |
 | Shortcuts & Siri | App Intents: **Buzz Band**, **Get Steps**, **Get Band Battery** | Built and registered; run on device pending |
 | Steps, heart rate, battery | Activity-only read (~3 s) or full sync (~5 s) | Yes |
 | Live heart rate | Standard Bluetooth Heart Rate Profile while *Share heart rate* is on in Google Health; zones, RMSSD from RR intervals, Edwards load | Needs sharing turned on |
-| Trends | Steps, sleep, resting HR, HRV, sleep timing; 7-day average against your own usual range | Logic tested; uses Apple Health data |
-| Training | Session-RPE load, Banister fitness/fatigue/form, weekly load, VO₂max estimate, Karvonen zones | Logic tested |
+| Readiness | Transparent 0–100 recovery score from your own HRV, resting HR, sleep duration and regularity, each component shown | Logic tested; uses Apple Health data |
+| Trends | Steps, sleep, resting HR, HRV; sleep timing with regularity and social jetlag; 7-day average against your own usual range | Logic tested; uses Apple Health data |
+| Training | Session-RPE load, Banister fitness/fatigue/form, EWMA acute:chronic ratio, weekly ramp, HRV CV, VO₂max vs age/sex norms, Karvonen zones | Logic tested |
 
 ### What the Air can't do from an iPhone
 
@@ -36,13 +37,15 @@ No firmware changes, no account, no cloud.
   with a Bluetooth trace), and iOS gives no app access to other apps'
   notifications. Pebble uses Shortcuts automations instead: *Message* or *Email*
   trigger → **Buzz Band**.
-- **LED colour.** The status light is firmware-controlled: white above 20 %
-  battery, red below. No command for it is known; Pebble doesn't guess one.
-- **Double-tap as a phone trigger.** Double-tap is handled on the band (battery
-  light, stop alarm). A read-only listening test with firm double-taps produced
-  no tap event, only the usual `rset`. Pebble's **Listen for band events**
-  screen stays available, and shows unknown event codes, if a firmware update
-  adds one.
+- **LED colour.** Decompilation found no app-addressable LED for any Fitbit
+  model; the notification `color` field is a UI accent for screened devices. The
+  Air's light is firmware battery status (white ≥20 %, red <20 %) only.
+- **Double-tap / gestures as a phone trigger.** Decompilation confirms the Air
+  exports no tap or gesture event — double-tap is an on-device alarm-dismissal
+  behaviour only, and there is no accelerometer/gyro stream. The one defined
+  interaction event is wrist on/off, which this Air has never emitted. Pebble's
+  **Listen for band events** screen shows any event code (unknown ones as
+  four-character codes) so a trigger can be wired if the firmware ever emits one.
 - **A permanent connection.** The Air accepts one secure-session owner at a
   time. Pebble connects briefly and disconnects, so Google Health keeps syncing.
 
@@ -75,8 +78,16 @@ Each figure is explained in the app (**Trends → How these are calculated**) an
   14-night standard deviation.
 - **Steps:** about 100 steps/min for moderate walking (Tudor-Locke et al. 2018);
   goal guidance from Paluch et al. 2022.
+- **Readiness:** HRV-led recovery heuristic (HRV 40, resting HR 25, sleep 25,
+  regularity 10), rescaled to available inputs (Plews et al. 2013; Buchheit 2014).
+- **Workload:** EWMA acute:chronic ratio (Williams et al. 2017), shown after ~8
+  training days with the 0.8–1.3 band as context, not a rule.
+- **Circadian:** social jetlag = weekend vs weekday sleep-midpoint gap
+  (Wittmann et al. 2006).
+- **Cardio fitness:** VO₂max ranked against age/sex norms (Cooper Institute).
 
-No readiness score, diagnosis or injury prediction.
+The daily Readiness score is a transparent, user-visible heuristic from your own
+baselines — not a diagnosis, clinical measure or injury prediction.
 
 ## Build
 
