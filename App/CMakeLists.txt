@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.25)
 project(AirCompanion LANGUAGES C Swift)
 add_subdirectory(../Native Native)
-add_executable(AirCompanion MACOSX_BUNDLE AirApp.swift BandConnection.swift Alarms.swift DeviceKeys.swift BandMetrics.swift Fitness.swift AppStore.swift HealthImport.swift AutomationDelivery.swift LibraryViews.swift Assets.xcassets)
+file(GLOB app_sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.swift" "${CMAKE_CURRENT_SOURCE_DIR}/UI/*.swift")
+add_executable(AirCompanion MACOSX_BUNDLE ${app_sources} Assets.xcassets)
 configure_file("${AIR_GOLDEN_GATE}/LICENSE" "${CMAKE_CURRENT_BINARY_DIR}/GoldenGate-LICENSE.txt" COPYONLY)
 configure_file("${AIR_GOLDEN_GATE}/NOTICE" "${CMAKE_CURRENT_BINARY_DIR}/GoldenGate-NOTICE.txt" COPYONLY)
 configure_file("${AIR_GOLDEN_GATE}/external/mbedtls-3/LICENSE" "${CMAKE_CURRENT_BINARY_DIR}/MbedTLS-LICENSE.txt" COPYONLY)
@@ -12,7 +13,7 @@ set(license_files
 set_source_files_properties(Assets.xcassets PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
 set_source_files_properties(${license_files} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
 target_sources(AirCompanion PRIVATE ${license_files})
-target_link_libraries(AirCompanion PRIVATE air-transport "-framework CoreBluetooth" "-framework SwiftUI" "-framework Security" "-framework HealthKit" "-framework UserNotifications" "-framework Charts" "-framework CallKit")
+target_link_libraries(AirCompanion PRIVATE air-transport "-framework CoreBluetooth" "-framework SwiftUI" "-framework Security" "-framework HealthKit" "-framework UserNotifications" "-framework Charts" "-framework CallKit" "-framework AVFoundation" "-framework AppIntents" "-framework BackgroundTasks")
 set_target_properties(AirCompanion PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist"
     XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon"

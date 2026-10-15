@@ -18,10 +18,16 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
     @Published var notificationAccess = false
     @Published private(set) var systemSharingReady = false
     @Published private(set) var preview = false
+    @Published private(set) var observedEvents: [ObservedEvent] = []
+    struct ObservedEvent: Identifiable { let id = UUID(); let date: Date; let name: String }
+    private var finishWaiters: [(Bool) -> Void] = []
+    private static let successTitles: Set<String> = ["Up to date", "Alarms refreshed", "Vibration complete", "Alarms saved", "Vibration setting saved", "Observation ended"]
+    var busy: Bool { active || closing != nil }
+    @Published private(set) var lastSucceeded: Bool?
     private var realSnapshot: Snapshot?
     private struct Snapshot: Codable { let alarms: AlarmList?; let activity: ActivityReading?; let lastRead: Date?; var deviceInfo: BandDeviceInfo? = nil }
     private struct Journal: Codable { let date: Date; let before: AlarmList; let change: AlarmChange }
-    private enum Purpose { case refresh, observe, systemSharing, primePulse, change(AlarmChange), haptic(HapticSetting, UInt64), pulse(Int) }
+    private enum Purpose { case refresh, activity, observe, systemSharing, primePulse, change(AlarmChange), haptic(HapticSetting, UInt64), pulse(BuzzPattern) }
     private var pendingSharingProbe = false
     private var authenticatedPeripheralID: UUID?
     private var observedEventCount = 0
@@ -72,8 +78,9 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
         case "events": begin(.observe)
         case "ancs": pendingSharingProbe = true; begin(.refresh)
         case "vibration":
-            let groups = alarmID.flatMap { (1...3).contains($0) ? Int($0) : nil } ?? 1
+            let groups = alarmID.flatMap { (1...4).contains($0) ? Int($0) : nil } ?? 1
             testVibration(groups: groups)
+        case "activity": begin(.activity)
         case "create-disabled-alarm": create(AlarmDraft(hour: 12, minute: 34, enabled: false, smartWake: false, days: 0))
         case "edit-test-alarm", "delete-test-alarm":
             guard let alarmID, let original = alarms?.alarms.first(where: { $0.id == alarmID }) else {
@@ -120,7 +127,7 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
     }
     private func cache() {
         guard !preview else { return }
-        do { try JSONEncoder().encode(Snapshot(alarms: alarms, activity: activity, lastRead: lastRead, deviceInfo: deviceInfo)).write(to: document("band-snapshot.json"), options: [.atomic, .completeFileProtection]) }
+        do { try JSONEncoder().encode(Snapshot(alarms: alarms, activity: activity, lastRead: lastRead, deviceInfo: deviceInfo)).write(to: document("band-snapshot.json"), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]) }
         catch { record("cache_failed") }
     }
     func refreshKeys() { keysReady = (try? DeviceKeys.load()) != nil }
@@ -139,15 +146,41 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
     }
     func delete(_ alarm: BandAlarm) { begin(.change(.delete(alarm))) }
     func testVibration(groups: Int = 1, completion: ((Bool) -> Void)? = nil) {
-        if pulseReady, active, transport != nil, (1...3).contains(groups) {
-            pulseReady = false; purpose = .pulse(groups); pulseCompletion = completion
+        let patterns: [Int: BuzzPattern] = [1: .single, 2: .double, 3: .triple, 4: .urgent]
+        guard let pattern = patterns[groups] else { completion?(false); return }
+        vibrate(pattern, completion: completion)
+    }
+    func vibrate(_ pattern: BuzzPattern, completion: ((Bool) -> Void)? = nil) {
+        if pulseReady, active, transport != nil {
+            pulseReady = false; purpose = .pulse(pattern); pulseCompletion = completion
             read(3, phase: .haptic, title: "Checking vibration setting")
             return
         }
-        guard canStart, (1...3).contains(groups) else { completion?(false); return }
+        guard canStart else { completion?(false); return }
         pulseCompletion = completion
-        begin(.pulse(groups))
+        begin(.pulse(pattern))
         if !active { let callback = pulseCompletion; pulseCompletion = nil; callback?(false) }
+    }
+    /// Reads only the current activity snapshot: the shortest band session.
+    func readActivity() { begin(.activity) }
+    func observeEvents() { begin(.observe) }
+    /// Suspends until the current session ends; true when it succeeded.
+    func run(_ start: () -> Void) async -> Bool {
+        await withCheckedContinuation { continuation in
+            var resumed = false
+            finishWaiters.append { ok in if !resumed { resumed = true; continuation.resume(returning: ok) } }
+            start()
+            if !active, let index = finishWaiters.indices.last { let waiter = finishWaiters.remove(at: index); waiter(false) }
+        }
+    }
+    func vibrate(_ pattern: BuzzPattern) async -> Bool {
+        await withCheckedContinuation { continuation in vibrate(pattern) { continuation.resume(returning: $0) } }
+    }
+    /// Waits for a previous session to close (bounded) before starting another.
+    func waitUntilIdle(seconds: Double = 20) async -> Bool {
+        var waited = 0.0
+        while !canStart && waited < seconds { try? await Task.sleep(nanoseconds: 200_000_000); waited += 0.2 }
+        return canStart
     }
     func prepareVibration(completion: @escaping (Bool) -> Void) {
         guard canStart else { completion(false); return }
@@ -194,6 +227,7 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
         completedPulseGroups = 0; recoveringPulse = pendingPulse != nil; pulseSucceeded = false; pulseReady = false
         purpose = requested; phase = .alarms; beforeWrite = nil; writeSent = false; writeVerified = false; correctedCreation = false
         active = true; didRead = false; hasStarted = false; sent = 0; received = 0; events = []; fragments = []; outgoing = []; observedEventCount = 0; systemSharingReady = false
+        if case .observe = requested { observedEvents = [] }
         status = "Finding your Air"; detail = "Keep your band close to your iPhone."
         record("begin")
         let observing: Bool = { if case .observe = requested { return true }; return false }()
@@ -338,6 +372,7 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
                         for name in names where owner.observedEventCount < 128 {
                             owner.observedEventCount += 1
                             owner.record("band_event", value: name)
+                            owner.observedEvents.insert(ObservedEvent(date: Date(), name: name), at: 0)
                         }
                     }
                 })
@@ -384,6 +419,7 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
             else {
                 switch purpose {
                 case .pulse, .primePulse: phase = .capabilities; status = "Checking vibration support"; resource = 1
+                case .activity: phase = .activity; status = "Reading activity"; resource = 2
                 default: break
                 }
             }
@@ -410,7 +446,7 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
                 }
                 guard let transport else { return }
                 do {
-                    try JSONEncoder().encode(Journal(date: Date(), before: result, change: change)).write(to: document("alarm-transaction.json"), options: [.atomic, .completeFileProtection])
+                    try JSONEncoder().encode(Journal(date: Date(), before: result, change: change)).write(to: document("alarm-transaction.json"), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
                 } catch { finish("Couldn’t preserve original alarms", "Nothing was changed. Check available iPhone storage."); return }
                 beforeWrite = result; phase = .writing; status = "Saving alarms"
                 let outcome: Int32
@@ -451,7 +487,7 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
                       let transaction = try? HapticPulseTransaction(original: haptic, supported: capabilities.hapticIntensities) else {
                     finish("Vibration test unavailable", "The test needs supported Low and High settings, with vibration already on."); return
                 }
-                do { try JSONEncoder().encode(transaction).write(to: document("haptic-pulse-transaction.json"), options: [.atomic, .completeFileProtection]) }
+                do { try JSONEncoder().encode(transaction).write(to: document("haptic-pulse-transaction.json"), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]) }
                 catch { finish("Couldn’t preserve vibration setting", "Nothing was changed."); return }
                 pendingPulse = transaction
                 beginPulseWindow()
@@ -462,7 +498,7 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
                       let configuration = try? fresh.response(changingTo: value), let transport else {
                     finish("Vibration setting changed or unavailable", "Refresh and review the current setting before saving."); return
                 }
-                do { try JSONEncoder().encode(fresh).write(to: document("haptic-before-edit.json"), options: [.atomic, .completeFileProtection]) }
+                do { try JSONEncoder().encode(fresh).write(to: document("haptic-before-edit.json"), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]) }
                 catch { finish("Couldn’t preserve original setting", "Nothing was changed."); return }
                 phase = .hapticWriting; status = "Saving vibration setting"
                 let outcome = configuration.withUnsafeBytes { air_transport_set_haptics(transport, $0.bindMemory(to: UInt8.self).baseAddress, configuration.count) }
@@ -576,10 +612,11 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
         catch { finish("Recovery backup retained", "The original setting was verified, but the recovery file could not be cleared."); return }
         pendingPulse = nil; haptic = value
         record("pulse_original_verified")
-        if !recoveringPulse, case .pulse(let count) = purpose {
+        if !recoveringPulse, case .pulse(let pattern) = purpose {
             completedPulseGroups += 1
-            if completedPulseGroups < count {
-                pulseTimer = Timer(timeInterval: 0.8, repeats: false) { [weak self] _ in
+            if completedPulseGroups < pattern.groups {
+                let gap = pattern.gaps[completedPulseGroups - 1]
+                pulseTimer = Timer(timeInterval: gap, repeats: false) { [weak self] _ in
                     self?.read(3, phase: .haptic, title: "Preparing next vibration group")
                 }
                 if let pulseTimer { RunLoop.main.add(pulseTimer, forMode: .common) }
@@ -615,11 +652,15 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
             detail = "The original setting is backed up. Refresh checks it before any further changes; a conflicting setting is never overwritten."
         }
         if captureEnabled, let data = try? JSONSerialization.data(withJSONObject: fragments) {
-            try? data.write(to: document("transport-diagnostic.json"), options: [.atomic, .completeFileProtection])
+            try? data.write(to: document("transport-diagnostic.json"), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         }
         record("ended", value: status)
         let callback = pulseCompletion; pulseCompletion = nil
         callback?(pulseSucceeded)
+        let succeeded = Self.successTitles.contains(status) || (pulseSucceeded && status == "Vibration complete")
+        lastSucceeded = succeeded
+        let waiters = finishWaiters; finishWaiters = []
+        waiters.forEach { $0(succeeded) }
         let readyCallback = primeCompletion; primeCompletion = nil
         readyCallback?(false)
         if pendingSharingProbe {
@@ -638,7 +679,7 @@ final class BandConnection: NSObject, ObservableObject, CBCentralManagerDelegate
         let report: [String: Any] = ["events": events, "sentFragments": sent, "receivedFragments": received]
         let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("connection-report.json")
         if let data = try? JSONSerialization.data(withJSONObject: report, options: .prettyPrinted) {
-            try? data.write(to: url, options: [.atomic, .completeFileProtection])
+            try? data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         }
     }
 }

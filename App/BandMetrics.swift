@@ -30,7 +30,15 @@ enum BandEvent: UInt64 {
         guard !data.isEmpty, data.count <= 128 else { throw Proto.Failure.invalid }
         let values = try Proto(data).integers(1)
         guard values.count <= 32 else { throw Proto.Failure.invalid }
-        return values.map { BandEvent(rawValue: $0)?.diagnosticName ?? "unknown" }
+        return values.map { BandEvent(rawValue: $0)?.diagnosticName ?? fourCharacterCode($0) }
+    }
+    /// Event IDs are four ASCII characters packed big-endian (e.g. "rset").
+    /// Unknown IDs are shown that way so new band events can be identified.
+    static func fourCharacterCode(_ value: UInt64) -> String {
+        guard value <= UInt32.max else { return "0x" + String(value, radix: 16) }
+        let bytes = (0..<4).map { UInt8((value >> (24 - 8 * $0)) & 0xFF) }
+        guard bytes.allSatisfy({ (0x20...0x7E).contains($0) }) else { return "0x" + String(value, radix: 16) }
+        return "?" + String(decoding: bytes, as: UTF8.self)
     }
 }
 

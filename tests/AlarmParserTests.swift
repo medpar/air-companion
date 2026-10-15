@@ -89,7 +89,9 @@ import Foundation
             do { _ = try BandDeviceInfo(data: invalid); fatalError("Accepted invalid battery") } catch {}
         }
         let wristEvents = int(1, 2003989291) + int(1, 2003989293) + int(1, 99)
-        try check(BandEvent.diagnosticNames(data: wristEvents) == ["wrs+", "wrs-", "unknown"])
+        try check(BandEvent.diagnosticNames(data: wristEvents) == ["wrs+", "wrs-", "0x63"])
+        // Unknown printable IDs keep their four-character code for discovery.
+        try check(BandEvent.diagnosticNames(data: int(1, 0x7461_7032)) == ["?tap2"])
         try check(BandEvent.diagnosticNames(data: bytes(1, variable(1920165236) + variable(1885957735))) == ["rset", "ping"])
         for invalid in [Data(), Data(repeating: 0, count: 129), bytes(1, Data([128])), (0..<33).reduce(Data()) { data, _ in data + int(1, 1) }] {
             do { _ = try BandEvent.diagnosticNames(data: invalid); fatalError("Accepted invalid event batch") } catch {}

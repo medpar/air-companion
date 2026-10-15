@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>Pebble</title>
+  <rect width="1024" height="1024" fill="#0B5247"/>
+  <g transform="rotate(28 512 512)">
+    <rect x="364" y="219" width="296" height="586" rx="148" fill="none" stroke="#F0F5E6" stroke-width="48"/>
+    <rect x="422" y="338" width="180" height="348" rx="90" fill="#F0F5E6"/>
+    <circle cx="512" cy="410" r="14" fill="#0B5247"/>
+  </g>
+</svg>

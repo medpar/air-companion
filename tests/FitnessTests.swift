@@ -14,39 +14,101 @@ import Foundation
         precondition(trend.recentDays == 7 && trend.baselineDays == 28 && trend.delta == 5)
         precondition(FitnessMath.trend(Array(points.prefix(3)), now: now, calendar: calendar).delta == nil)
         precondition(FitnessMath.mean([]) == nil && FitnessMath.mean([.nan, 12]) == 12)
+        precondition(abs(FitnessMath.standardDeviation([2, 4, 4, 4, 5, 5, 7, 9])! - 2.138) < 0.001)
+
+        // Personal range: constant baseline has zero width; recent 60 sits above it.
+        var varied = points
+        for offset in 8...40 {
+            let day = calendar.date(byAdding: .day, value: -offset, to: calendar.startOfDay(for: now))!
+            varied.removeAll { $0.date == day }
+            varied.append(DailyMetric(kind: .restingPulse, date: day, value: offset % 2 == 0 ? 54 : 56, sourceID: "one", sourceName: "One"))
+        }
+        let signal = FitnessMath.signal(.restingPulse, varied, now: now, calendar: calendar)!
+        precondition(signal.position == .above && signal.low < 55 && signal.high > 55)
+        precondition(FitnessMath.signal(.restingPulse, Array(varied.prefix(10)), now: now, calendar: calendar) == nil)
+        // HRV uses a log scale with ±0.5 SD.
+        let hrv = varied.map { DailyMetric(kind: .hrvSDNN, date: $0.date, value: $0.value, sourceID: "one", sourceName: "One") }
+        let hrvSignal = FitnessMath.signal(.hrvSDNN, hrv, now: now, calendar: calendar)!
+        precondition(hrvSignal.high - hrvSignal.low < signal.high - signal.low)
+
         let a = Date(timeIntervalSince1970: 1000)
         let duration = FitnessMath.mergedDuration([DateInterval(start: a, duration: 60), DateInterval(start: a.addingTimeInterval(30), duration: 90), DateInterval(start: a.addingTimeInterval(150), duration: 30)])
         precondition(duration == 150) // Overlapping stages never double-count.
         let sleepStart = calendar.date(from: DateComponents(year: 2026, month: 10, day: 24, hour: 23))!
         let sleepEnd = calendar.date(from: DateComponents(year: 2026, month: 10, day: 25, hour: 7))!
         let sleep = FitnessMath.sleepByMorning([DateInterval(start: sleepStart, end: sleepEnd)], calendar: calendar)
-        precondition(sleep.count == 1 && sleep.values.first == 9 * 3600)
+        precondition(sleep.count == 1 && sleep.values.first == 9 * 3600) // DST night: 9 real hours.
         let lateMorning = calendar.date(from: DateComponents(year: 2026, month: 10, day: 25, hour: 11, minute: 30))!
         let nap = FitnessMath.sleepByMorning([DateInterval(start: lateMorning, duration: 3600)], calendar: calendar)
         precondition(nap.count == 2 && nap.values.allSatisfy { $0 == 1800 })
+        // Midpoint of 23:00 → 07:00 (9 h across the DST change) is 02:30 wall-clock-relative = 3.5 h after midnight in elapsed time.
+        let mid = FitnessMath.sleepMidpoints([DateInterval(start: sleepStart, end: sleepEnd)], calendar: calendar)
+        precondition(mid.count == 1 && abs(mid.values.first! - 3.5) < 0.001)
+        let shortNight = FitnessMath.sleepMidpoints([DateInterval(start: sleepStart, duration: 2 * 3600)], calendar: calendar)
+        precondition(shortNight.isEmpty) // No main episode under three hours.
+
         let workout = WorkoutEntry(id: UUID(), date: now, activity: "Run", minutes: 45, effort: 6, note: "", source: "Manual")
         precondition(workout.valid && workout.load == 270)
         var missing = workout; missing.effort = nil
         precondition(missing.load == nil)
         missing.minutes = .infinity; precondition(!missing.valid)
         precondition(FitnessMath.weeklyLoad([workout], now: now, calendar: calendar) == 270)
-        let rule = AutomationRule()
-        precondition(AutomationEngine.eligible(rule, steps: 10000, goal: 10000, readingDate: now, now: now, receipts: [], calendar: calendar))
+        let states = FitnessMath.training([workout], days: 30, now: now, calendar: calendar)
+        precondition(states.count == 30 && states.last!.load == 270)
+        precondition(abs(states.last!.fatigue - 270 * (1 - exp(-1.0 / 7))) < 0.0001 && states.last!.form < 0)
+
+        precondition(FitnessMath.maximumHeartRate(age: 40) == 180)
+        precondition(abs(FitnessMath.cardioFitness(maximum: 180, resting: 60)! - 45.9) < 0.001)
+        precondition(FitnessMath.cardioFitness(maximum: 180, resting: 200) == nil)
+        let floors = FitnessMath.zoneFloors(maximum: 180, resting: 60)
+        precondition(floors == [120, 132, 144, 156, 168])
+        precondition(FitnessMath.zone(for: 110, floors: floors) == nil && FitnessMath.zone(for: 150, floors: floors) == 2)
+        precondition(FitnessMath.edwardsLoad([10, 10, 0, 0, 2]) == 40)
+        precondition(FitnessMath.walkingMinutes(forSteps: 1754) == 18)
+        precondition(abs(FitnessMath.rmssd([800, 810, 800, 810, 800, 810, 800, 810, 800, 810, 800])! - 10) < 0.001)
+
+        // Alerts: goal once per day, survives relaunch, milestones collapse.
+        var settings = AlertSettings()
+        settings.milestone.enabled = true
+        var due = AlertEngine.due(settings: settings, goal: 10000, steps: 7600, readAt: now, now: now, delivered: [], calendar: calendar)
+        precondition(due.count == 1 && due[0].event == .milestone && due[0].key.hasSuffix("7500") && due[0].settles.count == 3)
+        var delivered = Set(due[0].settles)
+        precondition(AlertEngine.due(settings: settings, goal: 10000, steps: 7900, readAt: now, now: now, delivered: delivered, calendar: calendar).isEmpty)
+        due = AlertEngine.due(settings: settings, goal: 10000, steps: 10100, readAt: now, now: now, delivered: delivered, calendar: calendar)
+        precondition(due.count == 1 && due[0].event == .goal)
+        delivered.formUnion(due[0].settles)
+        let receipts = [AlertReceipt(date: now, event: .goal, key: due[0].key, outcome: "ok")]
+        let recovered = try JSONDecoder().decode([AlertReceipt].self, from: JSONEncoder().encode(receipts))
+        precondition(AlertEngine.due(settings: settings, goal: 10000, steps: 10200, readAt: now, now: now, delivered: delivered.union(recovered.map(\.key)), calendar: calendar).isEmpty)
         let yesterday = calendar.date(byAdding: .day, value: -1, to: now)!
-        precondition(!AutomationEngine.eligible(rule, steps: 15000, goal: 10000, readingDate: yesterday, now: now, receipts: [], calendar: calendar))
-        let receipt = RuleReceipt(date: now, ruleID: rule.id, day: now, simulated: false, message: "delivered")
-        precondition(!AutomationEngine.eligible(rule, steps: 15000, goal: 9000, readingDate: now, now: now, receipts: [receipt], calendar: calendar))
-        let recovered = try JSONDecoder().decode([RuleReceipt].self, from: JSONEncoder().encode([receipt]))
-        precondition(!AutomationEngine.eligible(rule, steps: 15000, goal: 10000, readingDate: now, now: now, receipts: recovered, calendar: calendar))
-        var vibration = rule; vibration.action = .bandVibration
-        precondition(vibration.canRun && vibration.vibrationGroups == 1)
-        precondition(AutomationEngine.eligible(vibration, steps: 20000, goal: 10000, readingDate: now, now: now, receipts: [], calendar: calendar))
-        vibration.trigger = .incomingCall
-        precondition(vibration.canRun && !AutomationEngine.eligible(vibration, steps: 20000, goal: 10000, readingDate: now, now: now, receipts: [], calendar: calendar))
-        vibration.pattern = "One long pulse"; precondition(!vibration.canRun)
-        vibration.pattern = "Three groups"; precondition(vibration.vibrationGroups == 3)
-        vibration.trigger = .notification; precondition(!vibration.canRun)
-        vibration.trigger = .doubleTap; precondition(!vibration.canRun)
-        print("PASS: DST windows, missing data, overlap union, session-RPE load, milestone deduplication and capability gates")
+        precondition(AlertEngine.due(settings: settings, goal: 10000, steps: 15000, readAt: yesterday, now: now, delivered: [], calendar: calendar).isEmpty)
+        // Goal off: a multiple of the milestone equal to the goal still counts as a milestone.
+        settings.goal.enabled = false
+        due = AlertEngine.due(settings: settings, goal: 10000, steps: 10000, readAt: now, now: now, delivered: [], calendar: calendar)
+        precondition(due.count == 1 && due[0].key.hasSuffix("10000"))
+
+        // Move reminder: one sedentary hour inside active hours.
+        settings.move.enabled = true
+        let samples = [StepSample(date: now.addingTimeInterval(-3600), steps: 4000), StepSample(date: now.addingTimeInterval(-60), steps: 4100)]
+        let move = AlertEngine.moveDue(settings: settings, samples: samples, now: now, delivered: [], calendar: calendar)
+        precondition(move?.event == .move)
+        precondition(AlertEngine.moveDue(settings: settings, samples: samples, now: now, delivered: [move!.key], calendar: calendar) == nil)
+        let active = [StepSample(date: now.addingTimeInterval(-3600), steps: 4000), StepSample(date: now.addingTimeInterval(-60), steps: 5200)]
+        precondition(AlertEngine.moveDue(settings: settings, samples: active, now: now, delivered: [], calendar: calendar) == nil)
+        let night = calendar.date(bySettingHour: 23, minute: 0, second: 0, of: now)!
+        precondition(AlertEngine.moveDue(settings: settings, samples: samples.map { StepSample(date: $0.date.addingTimeInterval(night.timeIntervalSince(now)), steps: $0.steps) }, now: night, delivered: [], calendar: calendar) == nil)
+
+        // Adaptive checks: sooner when the pace approaches a threshold, never under 5 min.
+        settings.goal.enabled = true
+        let walking = [StepSample(date: now.addingTimeInterval(-1200), steps: 9000), StepSample(date: now.addingTimeInterval(-60), steps: 9800)]
+        let soon = AlertEngine.nextCheck(settings: settings, goal: 10000, samples: walking, now: now, calendar: calendar)
+        precondition(soon >= 300 && soon < 600)
+        let idle = AlertEngine.nextCheck(settings: settings, goal: 10000, samples: samples, now: now, calendar: calendar)
+        precondition(idle == 1800)
+        precondition(BuzzPattern.urgent.groups == 4 && BuzzPattern.longGap.beats == [0, 2.8])
+
+        let legacy = try JSONDecoder().decode(AlertSettings.self, from: Data("{\"keepAlive\":true}".utf8))
+        precondition(legacy.keepAlive && legacy.goal.enabled && legacy.milestoneStep == 2500)
+        print("PASS: DST windows, personal ranges, sleep timing, training model, heart-rate formulas, alert deduplication and adaptive checks")
     }
 }

@@ -14,8 +14,8 @@ fi
 .private/native-tests/air-transport-test
 swiftc App/Alarms.swift App/BandMetrics.swift tests/AlarmParserTests.swift -o .private/alarm-parser-tests
 .private/alarm-parser-tests
-swiftc App/Fitness.swift tests/FitnessTests.swift -o .private/fitness-tests
+swiftc App/Fitness.swift App/Alerts.swift tests/FitnessTests.swift -o .private/fitness-tests
 .private/fitness-tests
-swiftc App/Fitness.swift App/AppStore.swift tests/StoreTests.swift -o .private/store-tests
+swiftc App/Fitness.swift App/Alerts.swift App/AppStore.swift tests/StoreTests.swift -o .private/store-tests
 .private/store-tests
 "$python_bin" -m unittest discover -s tests -q

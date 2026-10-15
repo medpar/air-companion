@@ -1,16 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleDisplayName</key><string>Air Companion</string>
+<key>CFBundleDisplayName</key><string>Pebble</string>
 <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
-<key>CFBundleName</key><string>AirCompanion</string>
+<key>CFBundleName</key><string>Pebble</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.3.0</string>
-<key>CFBundleVersion</key><string>3</string>
+<key>CFBundleShortVersionString</key><string>1.0.0</string>
+<key>CFBundleVersion</key><string>4</string>
 <key>LSRequiresIPhoneOS</key><true/>
-<key>NSBluetoothAlwaysUsageDescription</key><string>Air Companion connects to your Fitbit Air to manage alarms and read activity from your band.</string>
-<key>NSHealthShareUsageDescription</key><string>Read your sleep, resting heart rate, HRV and workouts to show private trends and training history on this iPhone.</string>
+<key>NSBluetoothAlwaysUsageDescription</key><string>Pebble connects to your Fitbit Air to manage alarms, read activity and deliver vibration alerts.</string>
+<key>NSHealthShareUsageDescription</key><string>Pebble reads steps, sleep, resting heart rate, HRV, workouts and your age to show trends against your own usual range.</string>
+<key>UIBackgroundModes</key><array><string>bluetooth-central</string><string>audio</string><string>fetch</string></array>
+<key>BGTaskSchedulerPermittedIdentifiers</key><array><string>com.medpar.air.companion.steps</string></array>
+<key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
 <key>UILaunchScreen</key><dict/>
 <key>UIApplicationSceneManifest</key><dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
 <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string></array>

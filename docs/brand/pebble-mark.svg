@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>Pebble mark</title>
+  <g transform="rotate(28 32 32)" fill="currentColor">
+    <path fill-rule="evenodd" d="M32 12.2a10.75 10.75 0 0 1 10.75 10.75v18.1A10.75 10.75 0 0 1 21.25 41.05v-18.1A10.75 10.75 0 0 1 32 12.2Zm0 3a7.75 7.75 0 0 0-7.75 7.75v18.1a7.75 7.75 0 0 0 15.5 0v-18.1A7.75 7.75 0 0 0 32 15.2Z"/>
+    <path fill-rule="evenodd" d="M32 21.1a5.6 5.6 0 0 1 5.6 5.6v10.6a5.6 5.6 0 0 1-11.2 0V26.7a5.6 5.6 0 0 1 5.6-5.6Zm0 2.75a0.9 0.9 0 1 0 0 1.8a0.9 0.9 0 1 0 0-1.8Z"/>
+  </g>
+</svg>

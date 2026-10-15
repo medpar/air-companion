@@ -23,7 +23,7 @@ struct DeviceKeys: Codable {
             let update = SecItemUpdate(base as CFDictionary, [kSecValueData as String: normalized] as CFDictionary)
             if update == errSecItemNotFound {
                 var add = base; add[kSecValueData as String] = normalized
-                add[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+                add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
                 guard SecItemAdd(add as CFDictionary, nil) == errSecSuccess else { throw Failure.keychain }
             } else if update != errSecSuccess { throw Failure.keychain }
             try FileManager.default.removeItem(at: url)
@@ -32,6 +32,17 @@ struct DeviceKeys: Codable {
         var query = base; query[kSecReturnData as String] = true
         var result: CFTypeRef?
         guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess, let data = result as? Data else { throw Failure.keychain }
-        let keys = try JSONDecoder().decode(DeviceKeys.self, from: data); try keys.validate(); return keys
+        let keys = try JSONDecoder().decode(DeviceKeys.self, from: data); try keys.validate()
+        migrateAccessibility(base)
+        return keys
+    }
+    /// Background alerts (calls, step checks, Shortcuts) can run while the
+    /// iPhone is locked. Keys stay device-only and become readable after the
+    /// first unlock following a restart, instead of only while unlocked.
+    private static func migrateAccessibility(_ base: [String: Any]) {
+        let flag = "deviceKeysAfterFirstUnlock"
+        guard !UserDefaults.standard.bool(forKey: flag) else { return }
+        let status = SecItemUpdate(base as CFDictionary, [kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly] as CFDictionary)
+        if status == errSecSuccess { UserDefaults.standard.set(true, forKey: flag) }
     }
 }
