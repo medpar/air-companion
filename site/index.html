@@ -17,7 +17,7 @@
 <link rel="icon" href="assets/brand/pebble-icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Instrument+Serif&display=swap" rel="stylesheet">
 <style>
 :root {
   --canvas: #F1F3EE; --surface: #FFFFFF; --sunken: #E7EBE4;
@@ -69,17 +69,12 @@ a:hover { text-decoration-thickness: 2px; }
 code, .mono { font-family: var(--mono); font-size: .86em; }
 code { background: var(--sunken); padding: .1em .38em; border-radius: 6px; }
 .wrap { width: min(var(--max), 100% - 2 * var(--gutter)); margin-inline: auto; }
-.eyebrow {
-  font: 500 12px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase;
-  color: var(--moss); display: inline-flex; align-items: center; gap: 10px;
-}
-.eyebrow::before { content: ""; width: 22px; height: 1px; background: currentColor; }
 h1, h2, h3 { margin: 0; font-weight: 400; }
 h2 {
   font: 400 clamp(40px, 6.2vw, 76px)/.98 var(--serif); letter-spacing: -.015em;
-  margin: 18px 0 22px; text-wrap: balance;
+  margin: 0 0 22px; text-wrap: balance;
 }
-h2 em, h1 em { font-style: italic; color: var(--moss); }
+h2 em, h1 em { font-style: normal; color: var(--moss); }
 h3 { font: 600 19px/1.3 var(--sans); letter-spacing: -.005em; margin-bottom: 8px; }
 p { margin: 0 0 1em; }
 .lede { font-size: clamp(18px, 2vw, 21px); color: var(--ink2); max-width: 62ch; text-wrap: pretty; }
@@ -107,9 +102,9 @@ section { padding: clamp(80px, 11vw, 150px) 0 0; }
 .hero { padding: clamp(48px, 7vw, 96px) 0 0; }
 .hero .wrap { display: grid; grid-template-columns: 1.05fr .95fr; gap: clamp(24px, 4vw, 64px); align-items: center; }
 .hero h1 {
-  font: 400 clamp(54px, 8.6vw, 116px)/.9 var(--serif); letter-spacing: -.025em; margin: 22px 0 26px;
+  font: 400 clamp(54px, 8.6vw, 116px)/.9 var(--serif); letter-spacing: -.025em; margin: 0 0 26px;
 }
-.hero h1 .amp { font-style: italic; color: var(--moss); }
+.hero h1 .amp { color: var(--moss); }
 .actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 30px 0 34px; }
 .btn {
   display: inline-flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 22px;
@@ -155,7 +150,7 @@ section { padding: clamp(80px, 11vw, 150px) 0 0; }
 .reveal.in { opacity: 1; transform: none; }
 .hero .rise { opacity: 0; animation: rise .9s cubic-bezier(.2,.7,.2,1) forwards; }
 .hero .rise:nth-child(2) { animation-delay: .08s; } .hero .rise:nth-child(3) { animation-delay: .16s; }
-.hero .rise:nth-child(4) { animation-delay: .24s; } .hero .rise:nth-child(5) { animation-delay: .32s; }
+.hero .rise:nth-child(4) { animation-delay: .24s; }
 .stage .phone, .stage .stone { animation: settle 1.1s cubic-bezier(.2,.7,.2,1) both; }
 .stage .phone.b { animation-delay: .15s; } .stage .phone.c { animation-delay: .25s; }
 @keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
@@ -211,7 +206,6 @@ section { padding: clamp(80px, 11vw, 150px) 0 0; }
 .cards { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; }
 .card { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius); padding: clamp(22px, 2.6vw, 30px); }
 .card p { color: var(--ink2); }
-.card .k { font: 500 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--moss); margin-bottom: 14px; display: block; }
 .span-7 { grid-column: span 7; } .span-5 { grid-column: span 5; } .span-6 { grid-column: span 6; } .span-4 { grid-column: span 4; } .span-8 { grid-column: span 8; } .span-12 { grid-column: span 12; }
 @media (max-width: 900px) { .cards > * { grid-column: span 12 !important; } }
 
@@ -395,7 +389,6 @@ footer nav { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: fle
   <section class="hero" aria-labelledby="hero-title">
     <div class="wrap">
       <div>
-        <span class="eyebrow rise">iPhone companion · Fitbit Air</span>
         <h1 id="hero-title" class="rise">Talk to your band. <span class="amp">Directly.</span></h1>
         <p class="lede rise">Pebble is a native, offline iPhone app for the Fitbit Air. It speaks the band's own Bluetooth protocol in short authenticated sessions: alarms, vibration alerts, live heart rate and honest training trends. No account, no cloud, and Google Health keeps syncing.</p>
         <div class="actions rise">
@@ -424,7 +417,6 @@ footer nav { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: fle
     <div class="wrap">
       <div class="head reveal">
         <div>
-          <span class="eyebrow">01 · How it works</span>
           <h2 id="how-title">Six layers between your phone and your <em>wrist</em>.</h2>
         </div>
         <p class="lede">The Air uses Google's open-source <a href="https://github.com/Google-Health-API/golden-gate">Golden Gate</a> stack: a tiny IP network carried over Bluetooth LE, secured with DTLS, speaking CoAP with protobuf payloads. Pebble embeds the same stack in a small C bridge that exposes only a fixed list of routes. Pick a layer.</p>
@@ -450,7 +442,6 @@ footer nav { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: fle
 
       <div class="cards" style="margin-top: 16px">
         <div class="card span-7 reveal">
-          <span class="k">The handshake</span>
           <h3>The band is the client. The phone is the server.</h3>
           <p>Every Air has two 16-byte pre-shared keys, primary and secondary, each with a 32-bit ID. The band opens with a PSK identity naming the key; Pebble looks it up in the Keychain and answers as the DTLS server.</p>
           <svg class="seq" viewBox="0 0 640 360" role="img" aria-labelledby="seq-t seq-d">
@@ -477,14 +468,12 @@ footer nav { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: fle
           </svg>
         </div>
         <div class="card span-5 reveal">
-          <span class="k">Where the keys come from</span>
           <h3>Your band's keys, read once.</h3>
           <p>The keys live in Google's cloud. For this project they were recovered with a scoped, single-use mitmproxy addon that watched the official app's own traffic and made a bounded, single-use read of the paired Air's keys. It never stores credentials, cookies or unrelated bodies.</p>
           <p>Before any custom byte went to the band, a live Bluetooth trace was decrypted offline: both <code>Finished</code> messages verified and all 131 application records parsed as CoAP.</p>
           <p style="margin:0">Pebble imports the key file once, moves it into the device-only Keychain and deletes the file. <a href="https://github.com/medpar/pebble/blob/main/docs/RESEARCH.md">Read the method →</a></p>
         </div>
         <div class="card span-12 reveal">
-          <span class="k">One owner at a time</span>
           <div class="cards" style="gap: 24px; align-items: center">
             <div class="span-5">
               <h3>Borrow the band, then give it back.</h3>
@@ -500,7 +489,7 @@ footer nav { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: fle
       </div>
 
       <div class="card reveal" style="margin-top: 16px">
-        <span class="k">Routes Pebble uses</span>
+        <h3>Routes Pebble uses</h3>
         <div class="table-scroll">
           <table class="ledger">
             <thead><tr><th scope="col">Route</th><th scope="col">Method</th><th scope="col">What it carries</th></tr></thead>
@@ -525,7 +514,6 @@ footer nav { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: fle
     <div class="wrap">
       <div class="head reveal">
         <div>
-          <span class="eyebrow">02 · Signals</span>
           <h2 id="signals-title">What the band <em>says</em>, and what it can be made to do.</h2>
         </div>
         <p class="lede">Reads are snapshots you ask for. Live heart rate streams over a standard profile. Events arrive when the band chooses to send them. Vibration has no command of its own, only a side effect.</p>
@@ -533,28 +521,24 @@ footer nav { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: fle
 
       <div class="cards">
         <div class="card span-4 reveal">
-          <span class="k">Reads</span>
           <h3>Snapshots on request</h3>
           <p>Steps and heart rate from <code>/liveactivity</code>, battery from <code>/device/info</code>, alarms and settings. Each reading is timestamped, so an old count is never shown as today's.</p>
           <p style="margin:0">Activity-only read: about 3 s. Full sync with alarms, capabilities, haptics and battery: about 5 s.</p>
         </div>
         <div class="card span-4 reveal">
-          <span class="k">Live heart rate</span>
           <h3>Standard Heart Rate Profile</h3>
-          <p>With <em>Share heart rate</em> on in Google Health, the Air also exposes Bluetooth service <code>0x180D</code>, measurement <code>0x2A37</code>: bpm plus RR intervals in 1/1024 s.</p>
+          <p>With “Share heart rate” on in Google Health, the Air also exposes Bluetooth service <code>0x180D</code>, measurement <code>0x2A37</code>: bpm plus RR intervals in 1/1024 s.</p>
           <p style="margin:0">Pebble turns it into heart-rate-reserve zones, RMSSD over the last 120 beats and Edwards training load. No keys needed for this path.</p>
         </div>
         <div class="card span-4 reveal">
-          <span class="k">Events · band → phone</span>
           <h3>Four letters, one integer</h3>
           <p>The band is a CoAP client too. It POSTs an <code>EventSet</code> to <code>/events</code> and <code>/eventsSecure</code> on the phone. IDs are four ASCII characters packed big-endian.</p>
-          <p style="margin:0">This Air has only ever sent <code>rset</code>. Pebble's <em>Listen for band events</em> screen shows any code that arrives, unknown ones included.</p>
+          <p style="margin:0">This Air has only ever sent <code>rset</code>. Pebble's “Listen for band events” screen shows any code that arrives, unknown ones included.</p>
         </div>
 
         <div class="card span-12 reveal">
           <div class="cards" style="gap: 28px; align-items: start">
             <div class="span-5">
-              <span class="k">Event decoder</span>
               <h3>Try the encoding</h3>
               <p>The seven IDs defined by the shared Fitbit protocol. Wrist on and off (<code>wrs+</code>, <code>wrs-</code>) are the only interaction events, and this Air hasn't emitted them. A dot marks what was actually observed.</p>
               <div class="codes" id="codes" role="group" aria-label="Known event IDs"></div>
@@ -572,8 +556,7 @@ footer nav { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: fle
       </div>
 
       <div class="seis reveal" style="margin-top: 16px" id="vibration">
-        <span class="eyebrow" style="color: inherit">Vibration</span>
-        <h3 style="margin-top: 16px">There's no buzz command. So Pebble flips a setting.</h3>
+        <h3>There's no buzz command. So Pebble flips a setting.</h3>
         <p>Changing the haptic intensity from Low to High makes the band play a preview. Pebble toggles it, holds for 0.3 s and restores it. Every change is a Bluetooth round trip of about a second, so patterns differ by count and spacing, not rhythm. Gaps under about 1.2 s feel identical on the wrist.</p>
         <div class="pick" id="pick" role="group" aria-label="Vibration pattern"></div>
         <svg class="trace" id="trace" viewBox="0 0 1000 170" role="img" aria-labelledby="trace-t"><title id="trace-t">Schematic of the selected vibration pattern over time</title></svg>
@@ -582,7 +565,6 @@ footer nav { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: fle
 
       <div class="head reveal" style="margin-top: clamp(64px, 9vw, 120px); margin-bottom: 28px">
         <div>
-          <span class="eyebrow">What it can't do</span>
           <h2 style="font-size: clamp(34px, 4.6vw, 56px)">Four things the Air <em>won't</em> do from an iPhone.</h2>
         </div>
         <p class="lede">Each was checked against a Bluetooth trace or static analysis of the official app, then left alone rather than guessed at.</p>
@@ -601,7 +583,6 @@ footer nav { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: fle
     <div class="wrap">
       <div class="head reveal">
         <div>
-          <span class="eyebrow">03 · The Pebble app</span>
           <h2 id="app-title">Small, quiet and <em>honest</em> about its numbers.</h2>
         </div>
         <p class="lede">Four tabs: Today, Alarms, Trends and Band. Every figure says where it came from and when, and every method is explained in the app with its citation.</p>
@@ -646,7 +627,6 @@ footer nav { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: fle
 
       <div class="head reveal" style="margin-top: clamp(64px, 9vw, 120px); margin-bottom: 28px">
         <div>
-          <span class="eyebrow">Methods</span>
           <h2 style="font-size: clamp(34px, 4.6vw, 56px)">Every number has a <em>citation</em>.</h2>
         </div>
         <p class="lede">Missing days are never zero, Apple Health sources are never blended, and nothing is a diagnosis. Full detail in <a href="https://github.com/medpar/pebble/blob/main/docs/METHODS.md">METHODS.md</a>.</p>
@@ -667,7 +647,6 @@ footer nav { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: fle
     <div class="wrap">
       <div class="head reveal">
         <div>
-          <span class="eyebrow">04 · Safety model</span>
           <h2 id="safety-title">Every write is a <em>round trip</em>.</h2>
         </div>
         <p class="lede">The C bridge exposes the routes above and nothing else: no firmware, reset, pairing, sync-acknowledgement or arbitrary-command paths.</p>
@@ -690,7 +669,6 @@ footer nav { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: fle
     <div class="wrap">
       <div class="head reveal">
         <div>
-          <span class="eyebrow">05 · Research trail</span>
           <h2 id="research-title">From an encrypted trace to a <em>buzz</em>.</h2>
         </div>
         <p class="lede">Evidence was graded at every step: live-verified, primary reference, recovered static output or unverified. Nothing was enabled on a guess.</p>
@@ -712,7 +690,6 @@ footer nav { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: fle
     <div class="wrap">
       <div class="head reveal">
         <div>
-          <span class="eyebrow">06 · Build it</span>
           <h2 id="build-title">Bring your own <em>band</em>.</h2>
         </div>
         <p class="lede">macOS, Xcode with an iOS 18+ SDK, CMake 3.25+. Dependencies are fetched at pinned, hash-checked versions. The offline checks need no phone, band or key.</p>
