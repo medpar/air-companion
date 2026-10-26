@@ -11,8 +11,8 @@
 <meta property="og:title" content="Pebble — an offline iPhone companion for the Fitbit Air">
 <meta property="og:description" content="Short authenticated Bluetooth sessions, a fixed list of CoAP routes, no cloud. How the Air's protocol works and what it can do.">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://medpar.github.io/air-companion/">
-<meta property="og:image" content="https://medpar.github.io/air-companion/assets/screenshots/dark.png">
+<meta property="og:url" content="https://medpar.github.io/pebble/">
+<meta property="og:image" content="https://medpar.github.io/pebble/assets/screenshots/dark.png">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="assets/brand/pebble-icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -386,7 +386,7 @@ footer nav { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: fle
       <a href="#signals">Signals</a>
       <a href="#app">The app</a>
       <a href="#research">Research</a>
-      <a class="gh" href="https://github.com/medpar/air-companion"><svg aria-hidden="true"><use href="#gh"/></svg>GitHub</a>
+      <a class="gh" href="https://github.com/medpar/pebble"><svg aria-hidden="true"><use href="#gh"/></svg>GitHub</a>
     </nav>
   </div>
 </header>
@@ -399,7 +399,7 @@ footer nav { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: fle
         <h1 id="hero-title" class="rise">Talk to your band. <span class="amp">Directly.</span></h1>
         <p class="lede rise">Pebble is a native, offline iPhone app for the Fitbit Air. It speaks the band's own Bluetooth protocol in short authenticated sessions: alarms, vibration alerts, live heart rate and honest training trends. No account, no cloud, and Google Health keeps syncing.</p>
         <div class="actions rise">
-          <a class="btn primary" href="https://github.com/medpar/air-companion"><svg aria-hidden="true"><use href="#gh"/></svg>Source on GitHub</a>
+          <a class="btn primary" href="https://github.com/medpar/pebble"><svg aria-hidden="true"><use href="#gh"/></svg>Source on GitHub</a>
           <a class="btn" href="#how">How the protocol works</a>
         </div>
         <div class="chips rise" role="list">
@@ -481,7 +481,7 @@ footer nav { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: fle
           <h3>Your band's keys, read once.</h3>
           <p>The keys live in Google's cloud. For this project they were recovered with a scoped, single-use mitmproxy addon that watched the official app's own traffic and made a bounded, single-use read of the paired Air's keys. It never stores credentials, cookies or unrelated bodies.</p>
           <p>Before any custom byte went to the band, a live Bluetooth trace was decrypted offline: both <code>Finished</code> messages verified and all 131 application records parsed as CoAP.</p>
-          <p style="margin:0">Pebble imports the key file once, moves it into the device-only Keychain and deletes the file. <a href="https://github.com/medpar/air-companion/blob/main/docs/RESEARCH.md">Read the method →</a></p>
+          <p style="margin:0">Pebble imports the key file once, moves it into the device-only Keychain and deletes the file. <a href="https://github.com/medpar/pebble/blob/main/docs/RESEARCH.md">Read the method →</a></p>
         </div>
         <div class="card span-12 reveal">
           <span class="k">One owner at a time</span>
@@ -649,7 +649,7 @@ footer nav { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: fle
           <span class="eyebrow">Methods</span>
           <h2 style="font-size: clamp(34px, 4.6vw, 56px)">Every number has a <em>citation</em>.</h2>
         </div>
-        <p class="lede">Missing days are never zero, Apple Health sources are never blended, and nothing is a diagnosis. Full detail in <a href="https://github.com/medpar/air-companion/blob/main/docs/METHODS.md">METHODS.md</a>.</p>
+        <p class="lede">Missing days are never zero, Apple Health sources are never blended, and nothing is a diagnosis. Full detail in <a href="https://github.com/medpar/pebble/blob/main/docs/METHODS.md">METHODS.md</a>.</p>
       </div>
       <div class="methods reveal">
         <div><h3>Usual range</h3><p class="f">last 7 d vs previous 60 d</p><p>HRV log-scaled ±0.5 SD (Plews 2013); resting HR and sleep ±1 SD.</p></div>
@@ -728,10 +728,10 @@ footer nav { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: fle
 <span class="c"># your own phone (free Personal Team signing lasts 7 days)</span>
 <span class="p">$ </span>AIR_DEVELOPMENT_TEAM=YOUR_TEAM_ID ./scripts/build-ios.sh</pre>
       <div class="docs reveal">
-        <a href="https://github.com/medpar/air-companion/blob/main/docs/PROTOCOL.md"><b>Protocol</b><span>Routes, quirks, events</span></a>
-        <a href="https://github.com/medpar/air-companion/blob/main/docs/RESEARCH.md"><b>Research log</b><span>How each fact was established</span></a>
-        <a href="https://github.com/medpar/air-companion/blob/main/docs/DEVICE-ACCEPTANCE.md"><b>Device tests</b><span>What ran on the real band</span></a>
-        <a href="https://github.com/medpar/air-companion/blob/main/docs/METHODS.md"><b>Methods</b><span>Health models and citations</span></a>
+        <a href="https://github.com/medpar/pebble/blob/main/docs/PROTOCOL.md"><b>Protocol</b><span>Routes, quirks, events</span></a>
+        <a href="https://github.com/medpar/pebble/blob/main/docs/RESEARCH.md"><b>Research log</b><span>How each fact was established</span></a>
+        <a href="https://github.com/medpar/pebble/blob/main/docs/DEVICE-ACCEPTANCE.md"><b>Device tests</b><span>What ran on the real band</span></a>
+        <a href="https://github.com/medpar/pebble/blob/main/docs/METHODS.md"><b>Methods</b><span>Health models and citations</span></a>
       </div>
     </div>
   </section>
@@ -741,9 +741,9 @@ footer nav { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: fle
   <div class="wrap">
     <p class="fine">Independent interoperability research. Not affiliated with, endorsed by or supported by Google or Fitbit. Fitbit and Fitbit Air are trademarks of Google LLC. Use Pebble only with a band you own, at your own risk. Health figures are estimates, not medical advice.</p>
     <nav aria-label="Footer">
-      <a href="https://github.com/medpar/air-companion">GitHub</a>
-      <a href="https://github.com/medpar/air-companion/blob/main/LICENSE">MIT license</a>
-      <a href="https://github.com/medpar/air-companion/blob/main/Native/THIRD_PARTY.md">Third-party notices</a>
+      <a href="https://github.com/medpar/pebble">GitHub</a>
+      <a href="https://github.com/medpar/pebble/blob/main/LICENSE">MIT license</a>
+      <a href="https://github.com/medpar/pebble/blob/main/Native/THIRD_PARTY.md">Third-party notices</a>
       <a href="https://github.com/Google-Health-API/golden-gate">Golden Gate</a>
       <a href="#top">Back to top ↑</a>
     </nav>

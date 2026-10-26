@@ -9,6 +9,6 @@ cmake_bin="${CMAKE_BIN:-cmake}"
     -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_DEPLOYMENT_TARGET=18.0 \
     -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
     "-DAIR_DEVELOPMENT_TEAM=$AIR_DEVELOPMENT_TEAM"
-xcodebuild -project .private/ios-project/AirCompanion.xcodeproj \
-    -scheme AirCompanion -configuration Debug -sdk iphoneos \
+xcodebuild -project .private/ios-project/Pebble.xcodeproj \
+    -scheme Pebble -configuration Debug -sdk iphoneos \
     -destination 'generic/platform=iOS' -allowProvisioningUpdates build

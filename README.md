@@ -7,7 +7,7 @@ alerts, live heart rate and evidence-based training and recovery trends, built
 on short authenticated Bluetooth sessions that share the band with Google Health.
 No firmware changes, no account, no cloud.
 
-**Website:** [medpar.github.io/air-companion](https://medpar.github.io/air-companion/)
+**Website:** [medpar.github.io/pebble](https://medpar.github.io/pebble/)
 
 <p>
 <img src="docs/screenshots/today.png" alt="Today" width="200">
@@ -212,7 +212,7 @@ versions into `.private/references`.
 ```sh
 ./scripts/prepare-native.sh
 ./scripts/build-simulator.sh
-xcrun simctl install booted .private/simulator-project/Debug-iphonesimulator/AirCompanion.app
+xcrun simctl install booted .private/simulator-project/Debug-iphonesimulator/Pebble.app
 xcrun simctl launch booted com.medpar.air.companion --preview
 ```
 
@@ -220,7 +220,7 @@ Signed phone build (your own team; free Personal Team signing lasts 7 days):
 
 ```sh
 AIR_DEVELOPMENT_TEAM=YOUR_TEAM_ID ./scripts/build-ios.sh
-xcrun devicectl device install app --device DEVICE_ID .private/ios-project/Debug-iphoneos/AirCompanion.app
+xcrun devicectl device install app --device DEVICE_ID .private/ios-project/Debug-iphoneos/Pebble.app
 ```
 
 Set `CMAKE_BIN` if `cmake` isn't on your `PATH`. `--preview` runs on example
