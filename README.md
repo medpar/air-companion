@@ -251,4 +251,10 @@ phone, band or key is needed.
 [Device acceptance](docs/DEVICE-ACCEPTANCE.md) · [Methods](docs/METHODS.md) ·
 [Third-party notices](Native/THIRD_PARTY.md)
 
+## License
+
+[MIT](LICENSE). Golden Gate and Mbed TLS, fetched at build time, remain under
+Apache-2.0, as does the Golden Gate patch in `Native/patches/`; their notices
+are in [Native/THIRD_PARTY.md](Native/THIRD_PARTY.md).
+
 <img src="docs/screenshots/dark.png" alt="Pebble in dark mode" width="820">

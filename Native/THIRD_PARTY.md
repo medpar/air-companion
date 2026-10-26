@@ -1,5 +1,10 @@
 # Native dependencies
 
+This project's own code is MIT-licensed (see [`LICENSE`](../LICENSE)). The
+dependencies below keep their own Apache-2.0 licenses, and
+[`patches/golden-gate-nip-cleanup.patch`](patches/golden-gate-nip-cleanup.patch),
+a modification of Golden Gate, is distributed under Apache-2.0.
+
 The build fetches source into ignored `.private/references`. It does not bundle
 device keys, research captures, or proprietary app code.
 
